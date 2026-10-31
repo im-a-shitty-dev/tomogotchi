@@ -75,9 +75,6 @@ LOOSE_FX = {
 }
 # New art drawn by code here rather than cut from the mockup.
 DRAWN_FX = {"foam": foam.frames}  # bubbles overflowing the tub
-# Nudges to the mockup's layout, in art pixels: (dx, dy) for a lying body and
-# its head. Beach: up 5 so the deck chair seat shows under him.
-NUDGE = {"beach": (0, -5)}
 
 # Front-facing bodies, as drawTomo options.
 FRONT = {
@@ -295,12 +292,6 @@ def main():
             place("prop", body, prop, layer)
     for body in BACK:
         files[f"body/{body}"] = R[f"{body}:"]
-    # Faces and props are in head space, so moving a body and its head offset
-    # together leaves them alone.
-    for body, (dx, dy) in NUDGE.items():
-        files[f"body/{body}"] = shift(files[f"body/{body}"], dx, dy)
-        hx, hy = head_offsets[body]
-        head_offsets[body] = (hx + dx, hy + dy)
 
     out = args.out
     w = Writer(out)

@@ -29,7 +29,7 @@ const P = M.P;
 // Lying poses, as set up in the mockup's frame(). Keep in sync with it.
 const LYING = {
   couch: { by: 43, top: P.tee, topS: P.teeS, shorts: P.shorts, shortsS: P.shortsS, hold: 'manga' },
-  beach: { by: 41, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
+  beach: { by: 36, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
 };
 const LYING_HEAD = (ly) => [-11, ly.by - 35];
 
