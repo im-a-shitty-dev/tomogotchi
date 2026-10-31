@@ -1,8 +1,8 @@
 name: Build
 
+# PRs only (no push builds), so each change builds once. Use "Run workflow"
+# in the Actions tab for a manual build of any branch, e.g. main.
 on:
-  push:
-    branches: [main, "claude/**"]
   pull_request:
   workflow_dispatch:
 
