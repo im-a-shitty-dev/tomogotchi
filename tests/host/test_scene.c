@@ -638,6 +638,60 @@ static void test_tails_wag(void)
     for (int f = SPRITE_FX_TAIL_PIKACHU; f <= SPRITE_FX_RIBBONS_SYLVEON_BACK; f++) CHECK(find(&s, &sprite_fx[f]) < 0);
 }
 
+#define SKIN 0xf6b7  // #f7d7bd in RGB565: his fingers
+
+static void test_snacks_in_his_hand(void)
+{
+    static uint16_t buf[SCENE_W * SCENE_H];
+    scene_t s;
+    // Every way he can hold one, every snack: his fingers show over it at the
+    // body's hand point (standing hand 35,46 shifted by the hand offset).
+    struct { pet_mood_t mood; pet_scene_t scene; pet_outfit_t outfit; pet_costume_t costume; sprite_body_t body; } cases[] = {
+        {PET_MOOD_DEADPAN, PET_SCENE_NONE, PET_OUTFIT_CASUAL, 0, SPRITE_BODY_CASUAL},
+        {PET_MOOD_COMMUTE, PET_SCENE_NONE, PET_OUTFIT_COAT, 0, SPRITE_BODY_COAT},
+        {PET_MOOD_NIGHT, PET_SCENE_NONE, PET_OUTFIT_PJS, 0, SPRITE_BODY_PJS},
+        {PET_MOOD_SPOOKY, PET_SCENE_NONE, PET_OUTFIT_COSTUME, PET_COSTUME_SYLVEON, SPRITE_BODY_SYLVEON},
+        {PET_MOOD_SPOOKY, PET_SCENE_NONE, PET_OUTFIT_COSTUME, PET_COSTUME_DRACULA, SPRITE_BODY_DRACULA},
+        {PET_MOOD_ME_TIME, PET_SCENE_COUCH, PET_OUTFIT_LYING, 0, SPRITE_BODY_COUCH_HAND},
+        {PET_MOOD_ME_TIME, PET_SCENE_BEACH, PET_OUTFIT_LYING, 0, SPRITE_BODY_BEACH_HAND},
+        {PET_MOOD_ME_TIME, PET_SCENE_BATH, PET_OUTFIT_HIDDEN, 0, SPRITE_BODY_HEAD},
+    };
+    for (unsigned c = 0; c < sizeof cases / sizeof cases[0]; c++) {
+        for (int item = PET_ITEM_GUMMY; item < PET_ITEM_COUNT; item++) {
+            pet_view_t v = view(cases[c].mood);
+            v.scene = cases[c].scene;
+            v.outfit = cases[c].outfit;
+            v.costume = cases[c].costume;
+            v.item = item;
+            scene_build(&s, &v, 2);  // tick 2: no bob, no Tube flicker
+            CHECK(body_layer(&s, cases[c].body) != NULL);
+            scene_render(&s, buf, SCENE_W);
+            sprite_offset_t h = sprite_hand_offset[cases[c].body];
+            int bob = s.layers[find(&s, &sprite_body[cases[c].body])].y;
+            int hx = 35 + h.x, hy = 46 + h.y + (cases[c].body == SPRITE_BODY_HEAD ? 0 : bob);
+            int skin = 0;
+            for (int y = hy; y < hy + 2; y++)
+                for (int x = hx; x < hx + 3; x++) skin += buf[y * SCENE_W + x] == SKIN;
+            if (skin != 6) fprintf(stderr, "case %u item %d: %d finger pixels\n", c, item, skin);
+            CHECK(skin == 6);
+        }
+    }
+    // Lying, he puts the manga down for it.
+    pet_view_t v = view(PET_MOOD_ME_TIME);
+    v.scene = PET_SCENE_COUCH;
+    v.outfit = PET_OUTFIT_LYING;
+    scene_build(&s, &v, 1);
+    CHECK(body_layer(&s, SPRITE_BODY_COUCH) != NULL);
+
+    // From the back it's behind him, peeking out.
+    v = view(PET_MOOD_DEADPAN);
+    v.back = true;
+    v.item = PET_ITEM_CRISPS;
+    scene_build(&s, &v, 1);
+    int snack = find(&s, sprite_prop(SPRITE_BODY_CASUAL, SPRITE_PROP_CRISPS));
+    CHECK(snack >= 0 && snack < find(&s, &sprite_body[SPRITE_BODY_CASUAL_BACK]));
+}
+
 int main(void)
 {
     test_resting_faces_blink();
@@ -660,6 +714,7 @@ int main(void)
     test_sulk_anger_mark();
     test_bubble_under_peek_strip();
     test_tails_wag();
+    test_snacks_in_his_hand();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

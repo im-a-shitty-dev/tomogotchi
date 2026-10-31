@@ -94,7 +94,7 @@ def c_ident(name: str) -> str:
 
 def load(manifest_path: Path):
     m = tomllib.loads(manifest_path.read_text())
-    unknown = set(m) - set(GROUPS) - {"head_offset", "face_override", "prop_override"}
+    unknown = set(m) - set(GROUPS) - {"head_offset", "hand_offset", "face_override", "prop_override"}
     if unknown:
         raise SpriteError(f"unknown keys in sprites.toml: {', '.join(sorted(unknown))}")
     groups = {g: list(m.get(g, [])) for g in GROUPS}
@@ -126,19 +126,24 @@ def load(manifest_path: Path):
                     table[(body, name)] = key
         overrides[kind] = table
 
-    heads = {}
-    for body, xy in m.get("head_offset", {}).items():
-        if body not in groups["body"]:
-            raise SpriteError(f"head_offset.{body}: no such body")
-        if len(xy) != 2 or not all(isinstance(v, int) and -W < v < W for v in xy):
-            raise SpriteError(f"head_offset.{body}: want [x, y]")
-        heads[body] = tuple(xy)
+    def offsets(table):
+        out = {}
+        for body, xy in m.get(table, {}).items():
+            if body not in groups["body"]:
+                raise SpriteError(f"{table}.{body}: no such body")
+            if len(xy) != 2 or not all(isinstance(v, int) and -W < v < W for v in xy):
+                raise SpriteError(f"{table}.{body}: want [x, y]")
+            out[body] = tuple(xy)
+        return out
+
+    heads = offsets("head_offset")
+    hands = offsets("hand_offset")
 
     used = {f"{k}.png" for k in sprites}
     strays = sorted(str(p.relative_to(ASSETS)) for p in ASSETS.rglob("*.png") if str(p.relative_to(ASSETS)) not in used)
     if strays:
         raise SpriteError("PNGs not listed in sprites.toml: " + ", ".join(strays))
-    return groups, sprites, overrides, heads
+    return groups, sprites, overrides, heads, hands
 
 
 def load_font(path: Path) -> list[tuple[int, int, int, list[int]]]:
@@ -161,7 +166,7 @@ def load_font(path: Path) -> list[tuple[int, int, int, list[int]]]:
     return sorted(glyphs)
 
 
-def generate(groups, sprites, overrides, heads, glyphs) -> tuple[str, str]:
+def generate(groups, sprites, overrides, heads, hands, glyphs) -> tuple[str, str]:
     colours = sorted({c for frames in sprites.values() for f in frames for c in f.px if c is not None})
     if len(colours) > 255:
         raise SpriteError(f"{len(colours)} colours in total; the palette holds 255")
@@ -207,6 +212,10 @@ def generate(groups, sprites, overrides, heads, glyphs) -> tuple[str, str]:
         "// Where a body's head is, relative to the standard standing pose. Draw its",
         "// face and props shifted by this much.",
         "extern const sprite_offset_t sprite_head_offset[SPRITE_BODY_COUNT];",
+        "",
+        "// Where a body's snack hand is, relative to the standing pose's. Snack",
+        "// props are drawn in the standing hand, so shift them by this much.",
+        "extern const sprite_offset_t sprite_hand_offset[SPRITE_BODY_COUNT];",
         "",
         "// Face and prop art for a body. Most bodies share one set; masks and hoods",
         "// have their own. Returns NULL when that body shows no such face or prop.",
@@ -265,6 +274,9 @@ def generate(groups, sprites, overrides, heads, glyphs) -> tuple[str, str]:
 
     src.append("const sprite_offset_t sprite_head_offset[SPRITE_BODY_COUNT] = {")
     src += [f"    {{{heads.get(b, (0, 0))[0]}, {heads.get(b, (0, 0))[1]}}},  // {b}" for b in groups["body"]]
+    src += ["};", ""]
+    src.append("const sprite_offset_t sprite_hand_offset[SPRITE_BODY_COUNT] = {")
+    src += [f"    {{{hands.get(b, (0, 0))[0]}, {hands.get(b, (0, 0))[1]}}},  // {b}" for b in groups["body"]]
     src += ["};", ""]
 
     for kind in ("face", "prop"):

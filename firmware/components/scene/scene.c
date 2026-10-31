@@ -55,7 +55,9 @@ static sprite_body_t body_for(const pet_view_t *v)
                                                 : SPRITE_BODY_PJS;
     case PET_OUTFIT_BATH: return SPRITE_BODY_BATH_BACK;
     case PET_OUTFIT_COSTUME: return costume_body(v->costume, v->back);
-    case PET_OUTFIT_LYING: return v->scene == PET_SCENE_BEACH ? SPRITE_BODY_BEACH : SPRITE_BODY_COUCH;
+    case PET_OUTFIT_LYING:  // a hand free when he has a snack, instead of the manga or colada
+        if (v->item != PET_ITEM_NONE) return v->scene == PET_SCENE_BEACH ? SPRITE_BODY_BEACH_HAND : SPRITE_BODY_COUCH_HAND;
+        return v->scene == PET_SCENE_BEACH ? SPRITE_BODY_BEACH : SPRITE_BODY_COUCH;
     case PET_OUTFIT_HIDDEN: return SPRITE_BODY_HEAD;
     default: return v->back ? SPRITE_BODY_CASUAL_BACK : SPRITE_BODY_CASUAL;
     }
@@ -194,30 +196,45 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
     int tail, ribbons;
     tail_for(v, &tail, &ribbons);
     uint32_t wag_frame = wag[(v->line != NULL ? t * 2 : t) % 8];
+    // A snack is drawn in his fingers at the body's hand point (the art is
+    // cut at the standing hand). From the back it peeks out from behind him;
+    // sitting in the bath he holds it up out of the foam.
+    static const int snacks[PET_ITEM_COUNT] = {
+        [PET_ITEM_NONE] = -1, [PET_ITEM_GUMMY] = SPRITE_PROP_GUMMY,
+        [PET_ITEM_CRISPS] = SPRITE_PROP_CRISPS, [PET_ITEM_COFFEE] = SPRITE_PROP_COFFEE,
+    };
+    int snack = (unsigned)v->item < PET_ITEM_COUNT ? snacks[v->item] : -1;
+    const sprite_t *snack_sp = snack >= 0 ? sprite_prop(SPRITE_BODY_CASUAL, snack) : NULL;
+    sprite_offset_t hand = sprite_hand_offset[body];
+    bool in_tub = bath && front >= 0;
+
     if (tail >= 0 && !v->back) push(s, &sprite_fx[tail], wag_frame, dx, dy);
+    if (snack_sp && v->back) push(s, snack_sp, 0, hand.x + dx, hand.y + dy);
     push(s, &sprite_body[body], 0, dx, dy);
     if (tail >= 0 && v->back) push(s, &sprite_fx[tail], wag_frame, dx, dy);
     int hx = dx + sprite_head_offset[body].x, hy = dy + sprite_head_offset[body].y;
+    if (ribbons >= 0) push(s, &sprite_fx[ribbons], t / RIPPLE_EVERY, dx, dy);  // in front of him, behind a snack
     if (!v->back) {
         push(s, sprite_face(body, face_for(v->face, t)), 0, hx, hy);
         if (v->bedhead) push(s, sprite_prop(body, SPRITE_PROP_BEDHEAD), 0, hx, hy);
-        static const int items[PET_ITEM_COUNT] = {
-            [PET_ITEM_NONE] = -1, [PET_ITEM_GUMMY] = SPRITE_PROP_GUMMY,
-            [PET_ITEM_CRISPS] = SPRITE_PROP_CRISPS, [PET_ITEM_COFFEE] = SPRITE_PROP_COFFEE,
-        };
-        int held = (unsigned)v->item < PET_ITEM_COUNT ? items[v->item] : -1;
-        if (held < 0 && v->cup) held = SPRITE_PROP_CUP;
-        if (held < 0 && v->phone) held = SPRITE_PROP_PHONE;
-        if (held >= 0) push(s, sprite_prop(body, held), 0, hx, hy);
+        if (snack_sp && !in_tub) {
+            push(s, snack_sp, 0, hand.x + dx, hand.y + dy);
+        } else if (!snack_sp) {
+            int held = v->cup ? SPRITE_PROP_CUP : v->phone ? SPRITE_PROP_PHONE : -1;
+            if (held >= 0) push(s, sprite_prop(body, held), 0, hx, hy);
+        }
     }
-    if (ribbons >= 0) push(s, &sprite_fx[ribbons], t / RIPPLE_EVERY, dx, dy);  // always in front
 
     // In front of him.
     if (front >= 0) push(s, &sprite_front[front], 0, 0, 0);
-    if (bath && front >= 0) {
+    if (in_tub) {
         push(s, &sprite_fx[SPRITE_FX_FOAM], t, 0, 0);  // bubbles overflowing
         if (v->shake) push(s, &sprite_fx[SPRITE_FX_SPLASH], t, 0, 0);
         else push(s, &sprite_fx[SPRITE_FX_STEAM], t, 0, 0);
+        if (snack_sp) {  // an arm up out of the foam, holding it
+            push(s, &sprite_front[SPRITE_FRONT_BATH_ARM], 0, 0, 0);
+            push(s, snack_sp, 0, hand.x, hand.y);
+        }
     }
     if (zzz) push(s, &sprite_fx[SPRITE_FX_ZZZ], t, 0, 0);
 

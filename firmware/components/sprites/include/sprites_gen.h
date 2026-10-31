@@ -50,6 +50,8 @@ typedef enum {
     SPRITE_BODY_SYLVEON_BACK,
     SPRITE_BODY_PJS_BACK,
     SPRITE_BODY_BATH_BACK,
+    SPRITE_BODY_COUCH_HAND,
+    SPRITE_BODY_BEACH_HAND,
     SPRITE_BODY_COUNT
 } sprite_body_t;
 
@@ -77,12 +79,16 @@ typedef enum {
     SPRITE_PROP_GUMMY,
     SPRITE_PROP_CRISPS,
     SPRITE_PROP_COFFEE,
+    SPRITE_PROP_GUMMY_ICON,
+    SPRITE_PROP_CRISPS_ICON,
+    SPRITE_PROP_COFFEE_ICON,
     SPRITE_PROP_COUNT
 } sprite_prop_t;
 
 typedef enum {
     SPRITE_FRONT_TUB,
     SPRITE_FRONT_BLANKET,
+    SPRITE_FRONT_BATH_ARM,
     SPRITE_FRONT_COUNT
 } sprite_front_t;
 
@@ -140,6 +146,10 @@ extern const sprite_t sprite_hud[SPRITE_HUD_COUNT > 0 ? SPRITE_HUD_COUNT : 1];
 // Where a body's head is, relative to the standard standing pose. Draw its
 // face and props shifted by this much.
 extern const sprite_offset_t sprite_head_offset[SPRITE_BODY_COUNT];
+
+// Where a body's snack hand is, relative to the standing pose's. Snack
+// props are drawn in the standing hand, so shift them by this much.
+extern const sprite_offset_t sprite_hand_offset[SPRITE_BODY_COUNT];
 
 // Face and prop art for a body. Most bodies share one set; masks and hoods
 // have their own. Returns NULL when that body shows no such face or prop.

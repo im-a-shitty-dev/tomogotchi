@@ -329,7 +329,7 @@ static void draw_menu(void)
             buf[y * stride + x] = 0x18e3;  // dark grey
         }
     }
-    static const sprite_prop_t items[3] = {SPRITE_PROP_GUMMY, SPRITE_PROP_CRISPS, SPRITE_PROP_COFFEE};
+    static const sprite_prop_t items[3] = {SPRITE_PROP_GUMMY_ICON, SPRITE_PROP_CRISPS_ICON, SPRITE_PROP_COFFEE_ICON};
     for (int i = 0; i < 3; i++) {
         const sprite_t *sp = sprite_prop(SPRITE_BODY_CASUAL, items[i]);
         if (sp == NULL) continue;

@@ -120,7 +120,7 @@ BACK = {
 # Props in his hand (phone, morning coffee) and the morning bed hair, per body.
 HELD = {"phone": {"phone": True}, "cup": {"cup": True}, "bedhead": {"bedhead": True}}
 HELD_ON = {"casual": ["phone", "cup", "bedhead"], "coat": ["phone"]}
-PROPS = [*HELD, *ITEMS]
+PROPS = [*HELD, *ITEMS, *(f"{i}_icon" for i in ITEMS)]  # icons: no fingers, for the snack picker
 
 
 def render_all(mockup: Path, reqs: list) -> dict:
@@ -185,7 +185,7 @@ class Writer:
         self.count += 1
 
 
-def write_manifest(out: Path, bodies, head_offsets, overrides):
+def write_manifest(out: Path, bodies, head_offsets, hand_offsets, overrides):
     def names(xs):
         return "[" + ", ".join(f'"{x}"' for x in xs) + "]"
 
@@ -202,13 +202,20 @@ def write_manifest(out: Path, bodies, head_offsets, overrides):
         "body = " + names(bodies),
         "face = " + names(FACES),
         "prop = " + names(PROPS),
-        'front = ["tub", "blanket"]',
+        'front = ["tub", "blanket", "bath_arm"]',
         "",
         "# Faces and props are drawn at the body's head offset. Bodies not listed",
         "# use [0, 0]. Lying poses have the head further left and lower.",
         "[head_offset]",
     ]
     lines += [f"{b} = [{x}, {y}]" for b, (x, y) in head_offsets.items()]
+    lines += [
+        "",
+        "# Snacks are cut in the standing hand. Bodies whose hand is elsewhere",
+        "# (back views, lying with a free hand, the bath arm for head) list how far.",
+        "[hand_offset]",
+    ]
+    lines += [f"{b} = [{x}, {y}]" for b, (x, y) in hand_offsets.items()]
     lines += [
         "",
         "# Bodies that need their own face or prop art (masks, hoods over the",
@@ -237,8 +244,10 @@ def main():
                  for t in ticks]
     for name, (kind, ticks) in LOOSE_FX.items():
         reqs += [{"name": f"fx:{name}:{t}", "kind": kind, "t": t} for t in ticks]
-    reqs += [{"name": "front:tub", "kind": "tub"}, {"name": "front:blanket", "kind": "blanket"}]
+    reqs += [{"name": "front:tub", "kind": "tub"}, {"name": "front:blanket", "kind": "blanket"},
+             {"name": "front:bath_arm", "kind": "batharm"}]
     reqs += [{"name": f"item:{i}", "kind": "item", "item": i} for i in ITEMS]
+    reqs += [{"name": f"icon:{i}", "kind": "item", "item": i, "noFingers": True} for i in ITEMS]
     for body, opts in FRONT.items():
         reqs.append(tomo(f"{body}:", opts))
         reqs += [tomo(f"{body}:{f}", {**opts, "face": f}) for f in FACES]
@@ -246,6 +255,7 @@ def main():
             reqs.append(tomo(f"{body}+{prop}", {**opts, **HELD[prop]}))
             reqs.append(tomo(f"{body}:smirk+{prop}", {**opts, **HELD[prop], "face": "smirk"}))
     for pose in LYING:
+        reqs.append({"name": f"{pose}_hand:", "kind": "lying", "pose": pose, "hold": "hand"})
         reqs.append({"name": f"{pose}:", "kind": "lying", "pose": pose})
         reqs += [{"name": f"{pose}:{f}", "kind": "lying", "pose": pose, "face": f} for f in FACES]
     reqs += [tomo(f"{b}:", o) for b, o in BACK.items()]
@@ -273,12 +283,13 @@ def main():
         files[f"fx/{name}"] = [R[f"fx:{name}:{t}"] for t in ticks]
     for name, draw in DRAWN_FX.items():
         files[f"fx/{name}"] = draw()
-    for f in ("tub", "blanket"):
+    for f in ("tub", "blanket", "bath_arm"):
         files[f"front/{f}"] = R[f"front:{f}"]
     # Snacks can be handed to any body, so each is drawn on its own with its
-    # own outline. Its corner is at (39, 31), by his right hand.
+    # own outline, in his fingers at the standing hand (35, 46).
     for i in ITEMS:
         files[f"prop/{i}"] = R[f"item:{i}"]
+        files[f"prop/{i}_icon"] = R[f"icon:{i}"]
 
     head_offsets = {pose: tuple(R["_lying_head"][pose]) for pose in LYING}
     shared = {"face": {}, "prop": {}}
@@ -319,6 +330,23 @@ def main():
             place("prop", body, prop, layer)
     for body in BACK:
         files[f"body/{body}"] = R[f"{body}:"]
+    # Lying with a hand free for a snack: same head and faces as the pose.
+    for pose in LYING:
+        files[f"body/{pose}_hand"] = R[f"{pose}_hand:"]
+        head_offsets[f"{pose}_hand"] = head_offsets[pose]
+        for kind in overrides:
+            if pose in overrides[kind]:
+                overrides[kind][f"{pose}_hand"] = overrides[kind][pose]
+
+    hands = R["_hands"]
+    sx, sy = hands["stand"]
+
+    def from_stand(key):
+        return (hands[key][0] - sx, hands[key][1] - sy)
+
+    hand_offsets = {"head": from_stand("bath")}  # head: sitting in the bath, arm out of the foam
+    hand_offsets.update({pose + "_hand": from_stand(pose) for pose in LYING})
+    hand_offsets.update({b: from_stand("bath_back" if b == "bath_back" else "back") for b in BACK})
 
     for c in TAILED:
         for back, suffix in ((False, ""), (True, "_back")):
@@ -330,7 +358,7 @@ def main():
     w = Writer(out)
     for rel, layer in files.items():
         w.save(layer, rel)
-    write_manifest(out, [*FRONT, *LYING, *BACK], head_offsets, overrides)
+    write_manifest(out, [*FRONT, *LYING, *BACK, *(f"{p}_hand" for p in LYING)], head_offsets, hand_offsets, overrides)
     print(f"wrote {w.count} PNGs and sprites.toml to {out}")
 
 
