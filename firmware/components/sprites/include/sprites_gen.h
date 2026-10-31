@@ -128,7 +128,7 @@ typedef enum {
     SPRITE_HUD_COUNT
 } sprite_hud_t;
 
-#define SPRITE_PALETTE_SIZE 177
+#define SPRITE_PALETTE_SIZE 179
 extern const uint16_t sprite_palette[SPRITE_PALETTE_SIZE];
 
 extern const sprite_t sprite_bg[SPRITE_BG_COUNT > 0 ? SPRITE_BG_COUNT : 1];

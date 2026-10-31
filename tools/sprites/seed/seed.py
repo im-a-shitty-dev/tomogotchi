@@ -78,8 +78,7 @@ DRAWN_FX = {"foam": foam.frames}  # bubbles overflowing the tub
 
 # Costumes whose tail wags (and Sylveon's ribbons), cut as their own strips
 # and left out of the bodies. From the front the tail goes behind him and
-# from the back in front; the ribbons are always in front. Sylveon's tail and
-# ribbons sit on opposite sides, so one render is split down the middle.
+# from the back in front; Sylveon's ribbons are always in front.
 TAILED = ["pikachu", "sylveon", "trex", "trike"]
 TAIL_FRAMES = 4
 
@@ -252,9 +251,12 @@ def main():
     reqs += [tomo(f"{b}:", o) for b, o in BACK.items()]
     for c in TAILED:
         for back in (False, True):
-            reqs += [tomo(f"tail:{c}:{int(back)}:{k}", {"outfit": c, "back": back, "tailOnly": True,
-                                                         "tailFrame": k, "ribbonFrame": k})
+            reqs += [tomo(f"tail:{c}:{int(back)}:{k}", {"outfit": c, "back": back, "tailOnly": True, "tailFrame": k})
                      for k in range(TAIL_FRAMES)]
+            if c == "sylveon":
+                reqs += [tomo(f"ribbons:{c}:{int(back)}:{k}",
+                              {"outfit": c, "back": back, "ribbonsOnly": True, "ribbonFrame": k})
+                         for k in range(TAIL_FRAMES)]
     R = render_all(args.mockup, reqs)
 
     # Work everything out before touching the output folder.
@@ -318,17 +320,11 @@ def main():
     for body in BACK:
         files[f"body/{body}"] = R[f"{body}:"]
 
-    def half(layer, left):
-        return [c if (i % W < W // 2) == left else None for i, c in enumerate(layer)]
-
     for c in TAILED:
         for back, suffix in ((False, ""), (True, "_back")):
-            frames = [R[f"tail:{c}:{int(back)}:{k}"] for k in range(TAIL_FRAMES)]
-            if c == "sylveon":  # tail on the left from the front, ribbons opposite
-                files[f"fx/tail_{c}{suffix}"] = [half(f, not back) for f in frames]
-                files[f"fx/ribbons_{c}{suffix}"] = [half(f, back) for f in frames]
-            else:
-                files[f"fx/tail_{c}{suffix}"] = frames
+            files[f"fx/tail_{c}{suffix}"] = [R[f"tail:{c}:{int(back)}:{k}"] for k in range(TAIL_FRAMES)]
+            if c == "sylveon":
+                files[f"fx/ribbons_{c}{suffix}"] = [R[f"ribbons:{c}:{int(back)}:{k}"] for k in range(TAIL_FRAMES)]
 
     out = args.out
     w = Writer(out)
