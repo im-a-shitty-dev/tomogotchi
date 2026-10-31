@@ -14,6 +14,10 @@ add_executable(test_pet test_pet.c)
 target_link_libraries(test_pet PRIVATE pet)
 add_test(NAME pet COMMAND test_pet)
 
+add_executable(test_place test_place.c)
+target_link_libraries(test_place PRIVATE pet)
+add_test(NAME place COMMAND test_place)
+
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../firmware/components/sprites sprites)
 
 add_executable(test_sprites test_sprites.c)
