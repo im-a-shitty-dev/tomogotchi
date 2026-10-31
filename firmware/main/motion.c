@@ -81,7 +81,7 @@ static void motion_task(void *arg)
             window_start = now;
         }
         if (++jolts >= SHAKE_JOLTS) {
-            pet_event_t ev = PET_EVENT_SHAKE;
+            pet_event_t ev = {.type = PET_INPUT_SHAKE};
             xQueueSend(s_events, &ev, 0);
             jolts = 0;
             cooldown_until = now + pdMS_TO_TICKS(SHAKE_COOLDOWN_MS);
