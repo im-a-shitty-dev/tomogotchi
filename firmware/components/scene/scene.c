@@ -14,6 +14,13 @@
 #define DIM_EVERY 150    // Tube lights dip on ticks 0, 1 and 4 of every 150
 #define PEEK_SLIDE 3     // the peek strip slides 3 px per tick, in and out
 #define PEEK_DIVIDER 0x5a4d  // #5a4a6a, the line under the peek strip
+#define ANGER_EVERY 10   // the sulk anger mark shows on 7 ticks of every 10
+#define ANGER_ON 7
+
+#define RGB565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
+#define BUBBLE_FILL RGB565(0xfb, 0xfa, 0xf6)
+#define BUBBLE_EDGE RGB565(0x07, 0x05, 0x0b)  // the art's outline colour
+#define BUBBLE_INK RGB565(0x12, 0x0e, 0x18)
 
 // --- Mapping the pet's view to sprites ---------------------------------------
 
@@ -93,6 +100,8 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
     s->dim = false;
     s->band_from = 0;
     s->band_rows = 0;
+    s->bubble_text = NULL;
+    s->bubble_at = 0;
 
     sprite_body_t body = body_for(v);
     sprite_bg_t bg = SPRITE_BG_DEADPAN;
@@ -142,6 +151,8 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
         break;
     default: break;
     }
+    s->head_dy = (int8_t)dy;
+    s->lying = v->outfit == PET_OUTFIT_LYING;
     if (v->shake) dx = t % 2 ? 1 : -1;  // jiggle
 
     // Background, then anything moving in it.
@@ -189,6 +200,70 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
 
 // --- HUD ---------------------------------------------------------------------
 
+// The emote that goes with a face (from the mockup's emoteFor). Faces with
+// nothing to add get the dots, which the bubble makes redundant.
+static sprite_hud_t emote_for(const pet_view_t *v)
+{
+    if (v->item != PET_ITEM_NONE) return SPRITE_HUD_EMOTE_HEART;
+    switch (v->face) {
+    case PET_FACE_ANNOYED:
+    case PET_FACE_GRUMPY: return SPRITE_HUD_EMOTE_VEIN;
+    case PET_FACE_SLEEP: return SPRITE_HUD_EMOTE_ZZZ;
+    case PET_FACE_DIZZY: return SPRITE_HUD_EMOTE_SWIRL;
+    case PET_FACE_FANG: return SPRITE_HUD_EMOTE_BANG;
+    case PET_FACE_SMIRK:
+    case PET_FACE_SHADES: return SPRITE_HUD_EMOTE_NOTE;
+    case PET_FACE_HAPPY: return SPRITE_HUD_EMOTE_HEART;
+    default: return SPRITE_HUD_EMOTE_DOTS;
+    }
+}
+
+// Emote art sits at (1, 1) inside its outline, so place it one up and left.
+static void push_emote(scene_t *s, sprite_hud_t e, int x, int y)
+{
+    push(s, &sprite_hud[e], 0, x - 1, y - 1);
+}
+
+// His line in a bubble, with an emote by his head. While he says nothing,
+// a blinking anger mark shows he's sulking or has no hearts left.
+static void speech(scene_t *s, scene_hud_t *hud, const pet_view_t *v, uint32_t t)
+{
+    bool asleep = v->mood == PET_MOOD_ASLEEP;
+    // His face is low in the tub (unless he's stood up), lying down, or in
+    // bed, so the bubble goes at the top instead of over his body.
+    bool low = (v->mood == PET_MOOD_ME_TIME && v->outfit != PET_OUTFIT_BATH) || asleep;
+    bool upset = (v->sulking || v->happiness <= 0) && !asleep;
+    int head_x = s->lying ? 15 : 26;
+
+    if (v->line == NULL) {
+        hud->line = NULL;
+        if (upset && t % ANGER_EVERY < ANGER_ON) {
+            push_emote(s, SPRITE_HUD_EMOTE_VEIN, head_x + 10, s->lying ? 14 : 8 + s->head_dy);
+        }
+        return;
+    }
+    if (v->line != hud->line) {
+        hud->line = v->line;
+        hud->line_tick = t;
+    }
+    uint32_t k = t - hud->line_tick;
+    s->bubble_text = v->line;
+    s->bubble_at = s->count;
+    s->bubble_top = low;
+    s->bubble_tail_x = (int8_t)(head_x + 2);
+    s->bubble_ticks = (uint16_t)(k > 0xffff ? 0xffff : k);
+
+    sprite_hud_t e = emote_for(v);
+    if (e == SPRITE_HUD_EMOTE_DOTS) {
+        if (!upset) return;
+        e = SPRITE_HUD_EMOTE_VEIN;
+    }
+    // Beside his head, or below a top bubble.
+    int x = s->lying && low ? 2 : head_x + (low ? 13 : 10);
+    int y = s->lying ? (low ? 26 : 14) : (low ? 30 : 6) + s->head_dy;
+    push_emote(s, e, x, y);
+}
+
 void scene_hud_init(scene_hud_t *hud)
 {
     *hud = (scene_hud_t){.last_happiness = -1};
@@ -234,6 +309,8 @@ void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_ti
         push(s, &sprite_hud[pop], 0, k % 4 >= 2 ? 1 : 0, -(int)k);  // float up, wobbling
     }
 
+    speech(s, hud, v, t);
+
     // Peek strip: clock on the left, hearts on the right, over a dark band.
     if (hud->peeking && t - hud->peek_tick >= SCENE_PEEK_TICKS) hud->peeking = false;
     if (!hud->peeking) {
@@ -277,13 +354,154 @@ static void draw_band(uint16_t *buf, int stride, int rows)
     }
 }
 
+// --- Speech bubble -----------------------------------------------------------
+
+// Decode one UTF-8 character and step past it. Bad bytes come out as '?'.
+static uint32_t utf8_next(const char **p)
+{
+    const unsigned char *u = (const unsigned char *)*p;
+    uint32_t c = u[0];
+    int extra = c < 0x80 ? 0 : (c & 0xe0) == 0xc0 ? 1 : (c & 0xf0) == 0xe0 ? 2 : (c & 0xf8) == 0xf0 ? 3 : -1;
+    if (extra < 0) {
+        *p += 1;
+        return '?';
+    }
+    if (extra > 0) c &= 0x3f >> extra;
+    for (int i = 1; i <= extra; i++) {
+        if ((u[i] & 0xc0) != 0x80) {
+            *p += i;
+            return '?';
+        }
+        c = (c << 6) | (u[i] & 0x3f);
+    }
+    *p += 1 + extra;
+    return c;
+}
+
+static int text_width(const uint32_t *cps, int from, int to)
+{
+    int w = 0;
+    for (int i = from; i < to; i++) w += sprite_glyph(cps[i])->advance;
+    return w;
+}
+
+static int add_line(const uint32_t *cps, int from, int to, scene_text_line_t *lines, int n, int max_lines)
+{
+    while (from < to && cps[from] == ' ') from++;
+    while (to > from && cps[to - 1] == ' ') to--;
+    if (from == to || n >= max_lines) return n;
+    lines[n] = (scene_text_line_t){(uint8_t)from, (uint8_t)(to - from), (uint8_t)text_width(cps, from, to)};
+    return n + 1;
+}
+
+// The mockup's wrapText: English breaks at the last space, Japanese (and
+// words too long for a line) break anywhere.
+int scene_wrap(const char *text, int max_w, uint32_t *cps, int max_cps, scene_text_line_t *lines, int max_lines)
+{
+    int n = 0;
+    if (max_cps > 255) max_cps = 255;  // ranges are 8-bit
+    while (text != NULL && *text && n < max_cps) cps[n++] = utf8_next(&text);
+
+    int count = 0, from = 0;  // the line so far is cps[from..i)
+    for (int i = 0; i < n; i++) {
+        if (from == i || text_width(cps, from, i + 1) <= max_w) continue;
+        int sp = -1;
+        for (int j = i - 1; j > from; j--) {
+            if (cps[j] == ' ') {
+                sp = j;
+                break;
+            }
+        }
+        bool ascii = cps[i] >= 0x20 && cps[i] <= 0x7e;
+        if (ascii && sp > from) {
+            count = add_line(cps, from, sp, lines, count, max_lines);
+            from = sp + 1;
+        } else {
+            count = add_line(cps, from, i, lines, count, max_lines);
+            from = cps[i] == ' ' ? i + 1 : i;
+        }
+    }
+    return add_line(cps, from, n, lines, count, max_lines);
+}
+
+#define BUBBLE_MAX_CPS 96
+#define BUBBLE_MAX_LINES 8
+
+// A white box with a 1px outline and a tail pointing at his head, showing two
+// rows of the line at a time. Long lines page through every SCENE_PAGE_TICKS.
+static void draw_bubble(const scene_t *s, uint16_t *buf, int stride)
+{
+    // Static rather than ~1 KB on the caller's stack; rendering is one task.
+    static uint32_t cps[BUBBLE_MAX_CPS];
+    static uint64_t mask[SCENE_H];
+    scene_text_line_t lines[BUBBLE_MAX_LINES];
+    int n = scene_wrap(s->bubble_text, SCENE_BUBBLE_WRAP, cps, BUBBLE_MAX_CPS, lines, BUBBLE_MAX_LINES);
+    if (n == 0) return;
+    int pages = (n + 1) / 2;
+    int page = s->bubble_ticks / SCENE_PAGE_TICKS;
+    if (page > pages - 1) page = pages - 1;
+    int first = page * 2, rows = n - first < 2 ? n - first : 2;
+
+    int bw = 0;
+    for (int i = first; i < first + rows; i++) {
+        if (lines[i].width > bw) bw = lines[i].width;
+    }
+    bw += 4;
+    int bh = rows * SPRITE_GLYPH_ROWS + 2;
+    int x0 = (SCENE_W - bw + 1) / 2;
+    if (x0 > SCENE_W - 1 - bw) x0 = SCENE_W - 1 - bw;
+    if (x0 < 1) x0 = 1;
+    int y0 = s->bubble_top ? 1 : SCENE_H - 2 - bh;
+    int tx = s->bubble_tail_x;
+    if (tx > x0 + bw - 4) tx = x0 + bw - 4;
+    if (tx < x0 + 2) tx = x0 + 2;
+
+    // The bubble's shape as a bit mask per row, then outline it like the art.
+    for (int y = 0; y < SCENE_H; y++) mask[y] = 0;
+    for (int y = y0; y < y0 + bh; y++) mask[y] = ((1ull << bw) - 1) << x0;
+    int t1 = s->bubble_top ? y0 + bh : y0 - 1, t2 = s->bubble_top ? y0 + bh + 1 : y0 - 2;
+    if (t1 >= 0 && t1 < SCENE_H) mask[t1] |= 7ull << tx;
+    if (t2 >= 0 && t2 < SCENE_H) mask[t2] |= 1ull << (tx + 1);
+    const uint64_t row_bits = (1ull << SCENE_W) - 1;
+    for (int y = 0; y < SCENE_H; y++) {
+        uint64_t near = (mask[y] << 1) | (mask[y] >> 1);
+        if (y > 0) near |= mask[y - 1];
+        if (y < SCENE_H - 1) near |= mask[y + 1];
+        uint64_t edge = near & ~mask[y] & row_bits;
+        for (int x = 0; x < SCENE_W; x++) {
+            if (mask[y] >> x & 1) buf[y * stride + x] = BUBBLE_FILL;
+            else if (edge >> x & 1) buf[y * stride + x] = BUBBLE_EDGE;
+        }
+    }
+
+    for (int i = 0; i < rows; i++) {
+        const scene_text_line_t *ln = &lines[first + i];
+        int x = x0 + 2 + (bw - 4 - ln->width) / 2;
+        int y = y0 + 1 + i * SPRITE_GLYPH_ROWS;
+        for (int c = ln->start; c < ln->start + ln->len; c++) {
+            const sprite_glyph_t *g = sprite_glyph(cps[c]);
+            for (int r = 0; r < SPRITE_GLYPH_ROWS; r++) {
+                for (int k = 0; k < g->width; k++) {
+                    int px = x + k, py = y + r;
+                    if ((g->rows[r] >> k & 1) && px >= 0 && px < SCENE_W && py >= 0 && py < SCENE_H) {
+                        buf[py * stride + px] = BUBBLE_INK;
+                    }
+                }
+            }
+            x += g->advance;
+        }
+    }
+}
+
 void scene_render(const scene_t *s, uint16_t *buf, int stride)
 {
     for (int i = 0; i < s->count; i++) {
+        if (s->bubble_text && i == s->bubble_at) draw_bubble(s, buf, stride);
         if (s->band_rows && i == s->band_from) draw_band(buf, stride, s->band_rows);
         const scene_layer_t *l = &s->layers[i];
         sprite_draw(buf, stride, SCENE_W, SCENE_H, l->sprite, l->frame, l->x, l->y);
     }
+    if (s->bubble_text && s->bubble_at >= s->count) draw_bubble(s, buf, stride);
     if (s->band_rows && s->band_from >= s->count) draw_band(buf, stride, s->band_rows);
     if (s->dim) {
         for (int y = 0; y < SCENE_H; y++) {

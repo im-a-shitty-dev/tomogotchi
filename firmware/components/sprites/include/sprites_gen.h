@@ -108,6 +108,13 @@ typedef enum {
     SPRITE_HUD_POP_UP,
     SPRITE_HUD_POP_DOWN,
     SPRITE_HUD_POP_DOWN_BEACH,
+    SPRITE_HUD_EMOTE_VEIN,
+    SPRITE_HUD_EMOTE_HEART,
+    SPRITE_HUD_EMOTE_NOTE,
+    SPRITE_HUD_EMOTE_SWIRL,
+    SPRITE_HUD_EMOTE_BANG,
+    SPRITE_HUD_EMOTE_DOTS,
+    SPRITE_HUD_EMOTE_ZZZ,
     SPRITE_HUD_COUNT
 } sprite_hud_t;
 
@@ -128,6 +135,11 @@ extern const sprite_offset_t sprite_head_offset[SPRITE_BODY_COUNT];
 // have their own. Returns NULL when that body shows no such face or prop.
 const sprite_t *sprite_face(sprite_body_t body, sprite_face_t face);
 const sprite_t *sprite_prop(sprite_body_t body, sprite_prop_t prop);
+
+// The speech-bubble font, sorted by code point. Look glyphs up with
+// sprite_glyph().
+#define SPRITE_GLYPH_COUNT 180
+extern const sprite_glyph_t sprite_glyphs[SPRITE_GLYPH_COUNT];
 
 #ifdef __cplusplus
 }

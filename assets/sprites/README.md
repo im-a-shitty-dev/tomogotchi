@@ -14,9 +14,11 @@ Back to front:
 3. `body/` Tomo in an outfit or pose, outline and hair included
 4. `face/` a face overlay, then `prop/` props, both at the body's head offset
 5. `front/` anything in front of him (the tub, the blanket)
-6. `hud/` the pop-up hearts and the peek strip (clock digits, colon,
+6. `hud/` the pop-up hearts, the emotes by his head (`emote_*`, drawn at
+   1,1 inside their outline), and the peek strip (clock digits, colon,
    hearts), placed by the scene code at offsets from where they sit in the
-   PNG. The strip's dark band is drawn in code.
+   PNG. The strip's dark band and the speech bubble are drawn in code; the
+   bubble's font is `font/glyphs.json` (see `font/README.md`).
 
 Faces and props are overlays: only the pixels that change. Most bodies share
 the same faces. Bodies whose face looks different (masks, hoods over the

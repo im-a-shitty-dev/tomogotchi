@@ -332,7 +332,7 @@ void screen_draw(const pet_t *pet, uint32_t tick)
 {
     pet_view_t v = pet_view(pet);
     if (v.line != NULL && v.line != s_last_line) {
-        ESP_LOGI(TAG, "%s: \"%s\"", pet_mood_name(v.mood), v.line);  // no speech bubble yet
+        ESP_LOGI(TAG, "%s: \"%s\"", pet_mood_name(v.mood), v.line);  // also in the bubble (scene)
     }
     s_last_line = v.line;
     if (!s_on) {

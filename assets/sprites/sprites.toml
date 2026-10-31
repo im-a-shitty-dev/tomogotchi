@@ -11,8 +11,9 @@ body = ["casual", "coat", "dracula", "chiikawa", "sadako", "trex", "barrel", "pi
 face = ["blank", "blink", "smirk", "fang", "happy", "annoyed", "grumpy", "grumpyblink", "dizzy", "sleep", "screen", "read", "shades"]
 prop = ["phone", "cup", "bedhead", "gummy", "crisps", "coffee"]
 front = ["tub", "blanket"]
-# Peek strip (clock, hearts) and pop-up hearts. Drawn by scene code at offsets.
-hud = ["digits", "colon", "heart", "heart_empty", "pop_up", "pop_down", "pop_down_beach"]
+# Peek strip (clock, hearts), pop-up hearts, and the emotes by his head
+# (art at 1,1 inside its outline). Drawn by scene code at offsets.
+hud = ["digits", "colon", "heart", "heart_empty", "pop_up", "pop_down", "pop_down_beach", "emote_vein", "emote_heart", "emote_note", "emote_swirl", "emote_bang", "emote_dots", "emote_zzz"]
 
 # Faces and props are drawn at the body's head offset. Bodies not listed
 # use [0, 0]. Lying poses have the head further left and lower.

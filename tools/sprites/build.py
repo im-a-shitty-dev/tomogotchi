@@ -10,12 +10,15 @@ firmware/components/sprites/{include/sprites_gen.h,sprites_gen.c}:
   transparent.
 - Each frame trimmed to its bounding box, one palette index per pixel.
 - Frames with identical pixels are stored once.
+- The speech-bubble font from assets/sprites/font/glyphs.json, as a table of
+  1-bit glyphs sorted by code point.
 
 PNG rules: RGBA or RGB, 64 px tall, a multiple of 52 px wide (52 px per frame),
 and every pixel fully opaque or fully transparent.
 """
 
 import argparse
+import json
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -29,6 +32,9 @@ ASSETS = REPO / "assets" / "sprites"
 OUT_DIR = REPO / "firmware" / "components" / "sprites"
 OUT_H = OUT_DIR / "include" / "sprites_gen.h"
 OUT_C = OUT_DIR / "sprites_gen.c"
+FONT = ASSETS / "font" / "glyphs.json"
+GLYPH_ROWS = 11
+GLYPH_NAMES = {0x20: "space", 0x5C: "backslash"}  # keep the C comments readable and safe
 GROUPS = ["bg", "body", "face", "prop", "front", "fx", "hud"]
 
 
@@ -135,7 +141,27 @@ def load(manifest_path: Path):
     return groups, sprites, overrides, heads
 
 
-def generate(groups, sprites, overrides, heads) -> tuple[str, str]:
+def load_font(path: Path) -> list[tuple[int, int, int, list[int]]]:
+    """glyphs.json is {char: [advance, [row bitstrings]]}. Returns (code point,
+    advance, width, rows) sorted by code point, with bit k of a row = column k."""
+    font = json.loads(path.read_text(encoding="utf-8"))
+    glyphs = []
+    for ch, (adv, rows) in font.items():
+        if len(ch) != 1:
+            raise SpriteError(f"font: {ch!r} is not one character")
+        if rows and len(rows) != GLYPH_ROWS:
+            raise SpriteError(f"font: {ch!r} has {len(rows)} rows; want {GLYPH_ROWS}")
+        width = max((len(r) for r in rows), default=0)
+        if width > 16:
+            raise SpriteError(f"font: {ch!r} is {width} px wide; at most 16")
+        bits = [sum(1 << k for k, c in enumerate(r) if c == "1") for r in rows] or [0] * GLYPH_ROWS
+        glyphs.append((ord(ch), adv, width, bits))
+    if "?" not in font:
+        raise SpriteError("font: needs a '?' for missing characters")
+    return sorted(glyphs)
+
+
+def generate(groups, sprites, overrides, heads, glyphs) -> tuple[str, str]:
     colours = sorted({c for frames in sprites.values() for f in frames for c in f.px if c is not None})
     if len(colours) > 255:
         raise SpriteError(f"{len(colours)} colours in total; the palette holds 255")
@@ -186,6 +212,11 @@ def generate(groups, sprites, overrides, heads) -> tuple[str, str]:
         "// have their own. Returns NULL when that body shows no such face or prop.",
         "const sprite_t *sprite_face(sprite_body_t body, sprite_face_t face);",
         "const sprite_t *sprite_prop(sprite_body_t body, sprite_prop_t prop);",
+        "",
+        "// The speech-bubble font, sorted by code point. Look glyphs up with",
+        "// sprite_glyph().",
+        f"#define SPRITE_GLYPH_COUNT {len(glyphs)}",
+        "extern const sprite_glyph_t sprite_glyphs[SPRITE_GLYPH_COUNT];",
         "",
         "#ifdef __cplusplus",
         "}",
@@ -268,6 +299,12 @@ def generate(groups, sprites, overrides, heads) -> tuple[str, str]:
             "",
         ]
 
+    src.append("const sprite_glyph_t sprite_glyphs[SPRITE_GLYPH_COUNT] = {")
+    for cp, adv, width, bits in glyphs:
+        rows = ", ".join(f"0x{b:x}" for b in bits)
+        src.append(f"    {{0x{cp:04x}, {adv}, {width}, {{{rows}}}}},  // {GLYPH_NAMES.get(cp, chr(cp))}")
+    src += ["};", ""]
+
     src[1:1] = [f"// {len(colours)} colours, {len(data)} unique frames, {total} bytes of pixels."]
     return "\n".join(hdr), "\n".join(src)
 
@@ -277,7 +314,7 @@ def main():
     ap.add_argument("--check", action="store_true", help="fail if the generated files are out of date")
     args = ap.parse_args()
     try:
-        h, c = generate(*load(ASSETS / "sprites.toml"))
+        h, c = generate(*load(ASSETS / "sprites.toml"), load_font(FONT))
     except SpriteError as e:
         sys.exit(f"sprites: {e}")
 
