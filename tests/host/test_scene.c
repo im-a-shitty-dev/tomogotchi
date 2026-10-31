@@ -591,6 +591,53 @@ static void test_bubble_under_peek_strip(void)
     CHECK(fill_in_rows(buf, SCENE_PEEK_ROWS, 20) > 0);
 }
 
+static void test_tails_wag(void)
+{
+    scene_t s;
+    pet_view_t v = view(PET_MOOD_SPOOKY);
+    v.outfit = PET_OUTFIT_COSTUME;
+    v.costume = PET_COSTUME_PIKACHU;
+
+    // From the front the tail is behind him, ping-ponging 0,1,2,3,3,2,1,0.
+    static const int wag[8] = {0, 1, 2, 3, 3, 2, 1, 0};
+    for (uint32_t t = 0; t < 8; t++) {
+        scene_build(&s, &v, t);
+        int tail = find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU]);
+        int body = find(&s, &sprite_body[SPRITE_BODY_PIKACHU]);
+        CHECK(tail >= 0 && body > tail && s.layers[tail].frame == wag[t]);
+    }
+    // From the back it's in front.
+    v.back = true;
+    scene_build(&s, &v, 0);
+    int tail = find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU_BACK]);
+    CHECK(tail > find(&s, &sprite_body[SPRITE_BODY_PIKACHU_BACK]));
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU]) < 0);
+
+    // Twice as fast while he's saying something.
+    v.back = false;
+    v.line = "pika.";
+    scene_build(&s, &v, 1);
+    tail = find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU]);
+    CHECK(tail >= 0 && s.layers[tail].frame == 2);
+
+    // Sylveon's ribbons ripple in front of her, a frame every 2 ticks.
+    v = view(PET_MOOD_SPOOKY);
+    v.outfit = PET_OUTFIT_COSTUME;
+    v.costume = PET_COSTUME_SYLVEON;
+    scene_build(&s, &v, 5);
+    int rib = find(&s, &sprite_fx[SPRITE_FX_RIBBONS_SYLVEON]);
+    CHECK(rib > find(&s, &sprite_body[SPRITE_BODY_SYLVEON]) && s.layers[rib].frame == 2);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_TAIL_SYLVEON]) >= 0);
+
+    // Dinos wag too; costumes without tails, and normal clothes, don't.
+    v.costume = PET_COSTUME_TRIKE;
+    scene_build(&s, &v, 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_TAIL_TRIKE]) >= 0);
+    v.costume = PET_COSTUME_DRACULA;
+    scene_build(&s, &v, 0);
+    for (int f = SPRITE_FX_TAIL_PIKACHU; f <= SPRITE_FX_RIBBONS_SYLVEON_BACK; f++) CHECK(find(&s, &sprite_fx[f]) < 0);
+}
+
 int main(void)
 {
     test_resting_faces_blink();
@@ -612,6 +659,7 @@ int main(void)
     test_emotes();
     test_sulk_anger_mark();
     test_bubble_under_peek_strip();
+    test_tails_wag();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

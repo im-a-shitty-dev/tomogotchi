@@ -76,11 +76,31 @@ LOOSE_FX = {
 # New art drawn by code here rather than cut from the mockup.
 DRAWN_FX = {"foam": foam.frames}  # bubbles overflowing the tub
 
+# Costumes whose tail wags (and Sylveon's ribbons), cut as their own strips
+# and left out of the bodies. From the front the tail goes behind him and
+# from the back in front; the ribbons are always in front. Sylveon's tail and
+# ribbons sit on opposite sides, so one render is split down the middle.
+TAILED = ["pikachu", "sylveon", "trex", "trike"]
+TAIL_FRAMES = 4
+
+
+def no_tail(c):
+    return {"noTail": True} if c in TAILED else {}
+
+
+def tail_fx():
+    names = []
+    for c in TAILED:
+        for suffix in ("", "_back"):
+            names.append(f"tail_{c}{suffix}")
+    return names + ["ribbons_sylveon", "ribbons_sylveon_back"]
+
+
 # Front-facing bodies, as drawTomo options.
 FRONT = {
     "casual": {},
     "coat": {"outfit": "coat", "cans": True},  # commute: trench coat, headphones on
-    **{c: {"outfit": c} for c in COSTUMES},
+    **{c: {"outfit": c, **no_tail(c)} for c in COSTUMES},
     "pjs": {"outfit": "pjs"},
     # At night his face is lit by the screen and both hands hold the device.
     # The hands move, so each device is its own body rather than a prop.
@@ -93,7 +113,7 @@ FRONT = {
 LYING = ["couch", "beach"]
 BACK = {
     "casual_back": {"back": True},
-    **{f"{c}_back": {"outfit": c, "back": True} for c in COSTUMES},
+    **{f"{c}_back": {"outfit": c, "back": True, **no_tail(c)} for c in COSTUMES},
     "pjs_back": {"outfit": "pjs", "glow": True, "back": True},
     # Standing up in the bath, facing away. The tub goes in front.
     "bath_back": {"outfit": "bath", "back": True, "bathBack": True},
@@ -179,7 +199,7 @@ def write_manifest(out: Path, bodies, head_offsets, overrides):
         "# List order sets the C enum values.",
         "",
         "bg = " + names(BACKGROUNDS),
-        "fx = " + names([*FX, *LOOSE_FX, *DRAWN_FX]),
+        "fx = " + names([*FX, *LOOSE_FX, *DRAWN_FX, *tail_fx()]),
         "body = " + names(bodies),
         "face = " + names(FACES),
         "prop = " + names(PROPS),
@@ -230,6 +250,11 @@ def main():
         reqs.append({"name": f"{pose}:", "kind": "lying", "pose": pose})
         reqs += [{"name": f"{pose}:{f}", "kind": "lying", "pose": pose, "face": f} for f in FACES]
     reqs += [tomo(f"{b}:", o) for b, o in BACK.items()]
+    for c in TAILED:
+        for back in (False, True):
+            reqs += [tomo(f"tail:{c}:{int(back)}:{k}", {"outfit": c, "back": back, "tailOnly": True,
+                                                         "tailFrame": k, "ribbonFrame": k})
+                     for k in range(TAIL_FRAMES)]
     R = render_all(args.mockup, reqs)
 
     # Work everything out before touching the output folder.
@@ -292,6 +317,18 @@ def main():
             place("prop", body, prop, layer)
     for body in BACK:
         files[f"body/{body}"] = R[f"{body}:"]
+
+    def half(layer, left):
+        return [c if (i % W < W // 2) == left else None for i, c in enumerate(layer)]
+
+    for c in TAILED:
+        for back, suffix in ((False, ""), (True, "_back")):
+            frames = [R[f"tail:{c}:{int(back)}:{k}"] for k in range(TAIL_FRAMES)]
+            if c == "sylveon":  # tail on the left from the front, ribbons opposite
+                files[f"fx/tail_{c}{suffix}"] = [half(f, not back) for f in frames]
+                files[f"fx/ribbons_{c}{suffix}"] = [half(f, back) for f in frames]
+            else:
+                files[f"fx/tail_{c}{suffix}"] = frames
 
     out = args.out
     w = Writer(out)

@@ -14,6 +14,7 @@
 #define DIM_EVERY 150    // Tube lights dip on ticks 0, 1 and 4 of every 150
 #define PEEK_SLIDE 3     // the peek strip slides 3 px per tick, in and out
 #define PEEK_DIVIDER 0x5a4d  // #5a4a6a, the line under the peek strip
+#define RIPPLE_EVERY 2   // Sylveon's ribbons: one frame every 2 ticks
 #define ANGER_EVERY 10   // the sulk anger mark shows on 7 ticks of every 10
 #define ANGER_ON 7
 
@@ -84,6 +85,25 @@ static sprite_face_t face_for(pet_face_t f, uint32_t tick)
         }
     }
     return faces[f];
+}
+
+// Wagging tails (and Sylveon's ribbons), as fx strips for the costumes that
+// have them. -1 means none.
+static void tail_for(const pet_view_t *v, int *tail, int *ribbons)
+{
+    *tail = *ribbons = -1;
+    if (v->outfit != PET_OUTFIT_COSTUME) return;
+    bool b = v->back;
+    switch (v->costume) {
+    case PET_COSTUME_PIKACHU: *tail = b ? SPRITE_FX_TAIL_PIKACHU_BACK : SPRITE_FX_TAIL_PIKACHU; break;
+    case PET_COSTUME_SYLVEON:
+        *tail = b ? SPRITE_FX_TAIL_SYLVEON_BACK : SPRITE_FX_TAIL_SYLVEON;
+        *ribbons = b ? SPRITE_FX_RIBBONS_SYLVEON_BACK : SPRITE_FX_RIBBONS_SYLVEON;
+        break;
+    case PET_COSTUME_TREX: *tail = b ? SPRITE_FX_TAIL_TREX_BACK : SPRITE_FX_TAIL_TREX; break;
+    case PET_COSTUME_TRIKE: *tail = b ? SPRITE_FX_TAIL_TRIKE_BACK : SPRITE_FX_TAIL_TRIKE; break;
+    default: break;
+    }
 }
 
 static void push(scene_t *s, const sprite_t *sprite, uint32_t frame, int x, int y)
@@ -168,8 +188,15 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
         push(s, &sprite_fx[SPRITE_FX_FOAM], t, 0, 0);
     }
 
-    // Tomo.
+    // Tomo. A tail wags back and forth (ping-pong over 4 poses), twice as
+    // fast while he's reacting. From the front it's behind him.
+    static const uint8_t wag[8] = {0, 1, 2, 3, 3, 2, 1, 0};
+    int tail, ribbons;
+    tail_for(v, &tail, &ribbons);
+    uint32_t wag_frame = wag[(v->line != NULL ? t * 2 : t) % 8];
+    if (tail >= 0 && !v->back) push(s, &sprite_fx[tail], wag_frame, dx, dy);
     push(s, &sprite_body[body], 0, dx, dy);
+    if (tail >= 0 && v->back) push(s, &sprite_fx[tail], wag_frame, dx, dy);
     int hx = dx + sprite_head_offset[body].x, hy = dy + sprite_head_offset[body].y;
     if (!v->back) {
         push(s, sprite_face(body, face_for(v->face, t)), 0, hx, hy);
@@ -183,6 +210,7 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
         if (held < 0 && v->phone) held = SPRITE_PROP_PHONE;
         if (held >= 0) push(s, sprite_prop(body, held), 0, hx, hy);
     }
+    if (ribbons >= 0) push(s, &sprite_fx[ribbons], t / RIPPLE_EVERY, dx, dy);  // always in front
 
     // In front of him.
     if (front >= 0) push(s, &sprite_front[front], 0, 0, 0);
