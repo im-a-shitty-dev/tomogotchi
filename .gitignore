@@ -1,0 +1,10 @@
+# ESP-IDF
+build/
+sdkconfig
+sdkconfig.old
+managed_components/
+
+# Editors
+.vscode/
+.idea/
+.DS_Store

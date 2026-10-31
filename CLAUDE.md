@@ -15,3 +15,9 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Project notes
+
+- Firmware is ESP-IDF (v5.5+) + LVGL 9 in C, using Waveshare's board package. See `docs/adr/0001-esp-idf-and-lvgl.md`.
+- The ESP32-C6 has no PSRAM: never allocate a full 368x448 frame. Art is drawn on a 52x64 canvas scaled 7x.
+- Keep `firmware/components/pet` free of ESP-IDF/hardware includes so `tests/host` can build it. Run the host tests after changing it.
