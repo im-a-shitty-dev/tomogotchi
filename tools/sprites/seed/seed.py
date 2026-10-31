@@ -18,9 +18,10 @@ differ between the body with that face and the body with no face drawn, so
 body + face + prop composites match the mockup pixel for pixel. The script
 checks that before writing anything.
 
-Re-running it overwrites every PNG, so once someone edits the PNGs by hand,
-add new art by hand too (or seed into a scratch folder with --out and copy
-over what you need).
+Re-running it overwrites every PNG it makes, so once someone edits the PNGs
+by hand, add new art by hand too (or seed into a scratch folder with --out and
+copy over what you need). It doesn't delete PNGs it no longer makes; build.py
+flags those as unlisted.
 
     python tools/sprites/seed/seed.py path/to/tomo-moods.html [--out DIR]
 """
@@ -32,6 +33,8 @@ import tempfile
 from pathlib import Path
 
 from PIL import Image
+
+import foam
 
 W, H = 52, 64
 HERE = Path(__file__).resolve().parent
@@ -70,6 +73,11 @@ LOOSE_FX = {
     "bat": ("bat", range(66)),       # one bat crossing the sky; drawn twice
     "splash": ("splash", range(2)),  # shaken in the bath
 }
+# New art drawn by code here rather than cut from the mockup.
+DRAWN_FX = {"foam": foam.frames}  # bubbles overflowing the tub
+# Nudges to the mockup's layout, in art pixels: (dx, dy) for a lying body and
+# its head. Beach: up 5 so the deck chair seat shows under him.
+NUDGE = {"beach": (0, -5)}
 
 # Front-facing bodies, as drawTomo options.
 FRONT = {
@@ -174,7 +182,7 @@ def write_manifest(out: Path, bodies, head_offsets, overrides):
         "# List order sets the C enum values.",
         "",
         "bg = " + names(BACKGROUNDS),
-        "fx = " + names([*FX, *LOOSE_FX]),
+        "fx = " + names([*FX, *LOOSE_FX, *DRAWN_FX]),
         "body = " + names(bodies),
         "face = " + names(FACES),
         "prop = " + names(PROPS),
@@ -239,6 +247,8 @@ def main():
         files[f"fx/{name}"] = [[c if moving[i] else None for i, c in enumerate(f)] for f in frames]
     for name, (_, ticks) in LOOSE_FX.items():
         files[f"fx/{name}"] = [R[f"fx:{name}:{t}"] for t in ticks]
+    for name, draw in DRAWN_FX.items():
+        files[f"fx/{name}"] = draw()
     for f in ("tub", "blanket"):
         files[f"front/{f}"] = R[f"front:{f}"]
     # Snacks can be handed to any body, so each is drawn on its own with its
@@ -285,11 +295,14 @@ def main():
             place("prop", body, prop, layer)
     for body in BACK:
         files[f"body/{body}"] = R[f"{body}:"]
+    # Faces and props are in head space, so moving a body and its head offset
+    # together leaves them alone.
+    for body, (dx, dy) in NUDGE.items():
+        files[f"body/{body}"] = shift(files[f"body/{body}"], dx, dy)
+        hx, hy = head_offsets[body]
+        head_offsets[body] = (hx + dx, hy + dy)
 
     out = args.out
-    if out.exists():
-        for p in out.rglob("*.png"):
-            p.unlink()
     w = Writer(out)
     for rel, layer in files.items():
         w.save(layer, rel)

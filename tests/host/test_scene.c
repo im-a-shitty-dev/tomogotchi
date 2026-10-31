@@ -93,6 +93,7 @@ static void test_tub_in_front_or_behind(void)
     scene_build(&s, &v, 0);
     CHECK(find(&s, &sprite_front[SPRITE_FRONT_TUB]) > find(&s, &sprite_body[SPRITE_BODY_HEAD]));
     CHECK(find(&s, &sprite_fx[SPRITE_FX_STEAM]) >= 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_FOAM]) == find(&s, &sprite_front[SPRITE_FRONT_TUB]) + 1);
     CHECK(body_layer(&s, SPRITE_BODY_HEAD)->y == 7);
 
     // Stood up with his back to you: tub behind, no steam, no face.
@@ -101,6 +102,7 @@ static void test_tub_in_front_or_behind(void)
     scene_build(&s, &v, 0);
     int tub = find(&s, &sprite_front[SPRITE_FRONT_TUB]);
     CHECK(tub >= 0 && tub < find(&s, &sprite_body[SPRITE_BODY_BATH_BACK]));
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_FOAM]) == tub + 1);
     CHECK(find(&s, &sprite_fx[SPRITE_FX_STEAM]) < 0);
     CHECK(find(&s, sprite_face(SPRITE_BODY_BATH_BACK, SPRITE_FACE_HAPPY)) < 0);
 

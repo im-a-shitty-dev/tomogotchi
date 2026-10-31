@@ -148,7 +148,10 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
         push(s, &sprite_fx[SPRITE_FX_BAT], t, 0, 0);
         push(s, &sprite_fx[SPRITE_FX_BAT], t * 7 / 10 + 28, 0, 7);
     }
-    if (behind >= 0) push(s, &sprite_front[behind], 0, 0, 0);
+    if (behind >= 0) {
+        push(s, &sprite_front[behind], 0, 0, 0);
+        push(s, &sprite_fx[SPRITE_FX_FOAM], t, 0, 0);
+    }
 
     // Tomo.
     push(s, &sprite_body[body], 0, dx, dy);
@@ -169,6 +172,7 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
     // In front of him.
     if (front >= 0) push(s, &sprite_front[front], 0, 0, 0);
     if (bath && front >= 0) {
+        push(s, &sprite_fx[SPRITE_FX_FOAM], t, 0, 0);  // bubbles overflowing
         if (v->shake) push(s, &sprite_fx[SPRITE_FX_SPLASH], t, 0, 0);
         else push(s, &sprite_fx[SPRITE_FX_STEAM], t, 0, 0);
     }

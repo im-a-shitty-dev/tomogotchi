@@ -6,7 +6,7 @@
 # List order sets the C enum values.
 
 bg = ["deadpan", "morning", "commute", "bath", "couch", "beach", "night", "asleep", "spooky"]
-fx = ["waves", "tunnel", "stars", "steam", "zzz", "bat", "splash"]
+fx = ["waves", "tunnel", "stars", "steam", "zzz", "bat", "splash", "foam"]
 body = ["casual", "coat", "dracula", "chiikawa", "sadako", "trex", "barrel", "pikachu", "jason", "trike", "sylveon", "pjs", "pjs_phone", "pjs_switch", "head", "couch", "beach", "casual_back", "dracula_back", "chiikawa_back", "sadako_back", "trex_back", "barrel_back", "pikachu_back", "jason_back", "trike_back", "sylveon_back", "pjs_back", "bath_back"]
 face = ["blank", "blink", "smirk", "fang", "happy", "annoyed", "grumpy", "grumpyblink", "dizzy", "sleep", "screen", "read", "shades"]
 prop = ["phone", "cup", "bedhead", "gummy", "crisps", "coffee"]
@@ -16,7 +16,7 @@ front = ["tub", "blanket"]
 # use [0, 0]. Lying poses have the head further left and lower.
 [head_offset]
 couch = [-11, 8]
-beach = [-11, 6]
+beach = [-11, 1]
 
 # Bodies that need their own face or prop art (masks, hoods over the
 # cheeks). The value is a PNG under face/ or prop/ without .png, or "" to
