@@ -11,3 +11,6 @@ managed_components/
 
 # Python
 __pycache__/
+
+# Wi-Fi credentials (see firmware/main/wifi_secrets.example.h)
+firmware/main/wifi_secrets.h

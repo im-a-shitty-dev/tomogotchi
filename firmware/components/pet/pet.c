@@ -270,12 +270,27 @@ static void add_happiness(pet_t *pet, int delta, uint32_t now_ms)
 
 // --- Time ----------------------------------------------------------------------
 
+void pet_set_place(pet_t *pet, pet_place_t place)
+{
+    pet->place = place < PET_PLACE_COUNT ? place : PET_PLACE_UNKNOWN;
+}
+
 bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms)
 {
     bool changed = false;
 
     pet_mood_t mood = pet_mood_for(clock);
     pet_scene_t scene = pet_scene_for(clock);
+    if (mood != PET_MOOD_ASLEEP) {
+        if (pet->place == PET_PLACE_COMMUTING) {
+            mood = PET_MOOD_COMMUTE;
+        } else if (pet->place == PET_PLACE_HOME && mood == PET_MOOD_COMMUTE) {
+            mood = PET_MOOD_DEADPAN;
+        }
+        if (mood != PET_MOOD_ME_TIME) {
+            scene = PET_SCENE_NONE;
+        }
+    }
     if (mood != pet->scheduled || scene != pet->scene) {
         pet->scheduled = mood;
         pet->scene = scene;

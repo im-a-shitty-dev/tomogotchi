@@ -497,6 +497,74 @@ static void test_names(void)
     CHECK(!pet_costume_is_cute(PET_COSTUME_JASON));
 }
 
+// --- Place (from Wi-Fi) ----------------------------------------------------------
+
+static void test_commuting_puts_him_on_the_train(void)
+{
+    pet_t pet = pet_at(TUE, 10, 0);  // scheduled deadpan at work
+    pet_set_place(&pet, PET_PLACE_COMMUTING);
+    CHECK(tick(&pet, TUE, 10, 0, 1000));
+    CHECK(pet_view(&pet).mood == PET_MOOD_COMMUTE);
+    CHECK(pet_view(&pet).scene == PET_SCENE_NONE);
+
+    // Over me-time too, and the scene goes.
+    pet = pet_at(TUE, 18, 0);
+    pet_set_place(&pet, PET_PLACE_COMMUTING);
+    tick(&pet, TUE, 18, 0, 1000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_COMMUTE);
+    CHECK(pet_view(&pet).scene == PET_SCENE_NONE);
+
+    // He's on the train even on Halloween.
+    pet_init(&pet, 1);
+    pet_set_place(&pet, PET_PLACE_COMMUTING);
+    pet_clock_t halloween = {.month = 10, .mday = 31, .wday = SAT, .hour = 14};
+    pet_tick(&pet, &halloween, 0);
+    CHECK(pet_view(&pet).mood == PET_MOOD_COMMUTE);
+}
+
+static void test_commuting_never_wakes_him(void)
+{
+    pet_t pet = pet_at(TUE, 3, 0);
+    pet_set_place(&pet, PET_PLACE_COMMUTING);
+    tick(&pet, TUE, 3, 0, 1000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_ASLEEP);
+}
+
+static void test_home_cancels_scheduled_commute(void)
+{
+    pet_t pet = pet_at(TUE, 6, 30);
+    CHECK(pet_view(&pet).mood == PET_MOOD_COMMUTE);
+    pet_set_place(&pet, PET_PLACE_HOME);
+    CHECK(tick(&pet, TUE, 6, 30, 1000));
+    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+
+    // Home leaves the rest of the schedule alone.
+    pet = pet_at(TUE, 18, 0);
+    pet_set_place(&pet, PET_PLACE_HOME);
+    tick(&pet, TUE, 18, 0, 1000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_ME_TIME);
+    CHECK(pet_view(&pet).scene == PET_SCENE_BATH);
+}
+
+static void test_unknown_place_follows_the_schedule(void)
+{
+    pet_t pet = pet_at(TUE, 10, 0);
+    pet_set_place(&pet, PET_PLACE_COMMUTING);
+    tick(&pet, TUE, 10, 0, 1000);
+    pet_set_place(&pet, PET_PLACE_UNKNOWN);
+    CHECK(tick(&pet, TUE, 10, 0, 2000));
+    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+}
+
+static void test_costume_still_beats_the_train(void)
+{
+    pet_t pet = pet_at(TUE, 10, 0);
+    pet_set_place(&pet, PET_PLACE_COMMUTING);
+    tick(&pet, TUE, 10, 0, 1000);
+    pet_handle_event(&pet, SWIPE, 2000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_SPOOKY);
+}
+
 int main(void)
 {
     test_weekday_schedule();
@@ -536,6 +604,11 @@ int main(void)
     test_no_dressing_up_while_asleep();
     test_same_seed_same_lines();
     test_names();
+    test_commuting_puts_him_on_the_train();
+    test_commuting_never_wakes_him();
+    test_home_cancels_scheduled_commute();
+    test_unknown_place_follows_the_schedule();
+    test_costume_still_beats_the_train();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);

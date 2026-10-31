@@ -12,6 +12,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "motion.h"
+#include "net.h"
 #include "pet.h"
 #include "screen.h"
 
@@ -24,8 +25,8 @@ static uint32_t now_ms(void)
 
 static pet_clock_t local_clock(void)
 {
-    // TODO: set the clock (RTC + SNTP) with the Wi-Fi work. Until then this
-    // starts at midnight, 1 Jan 1970 (a Thursday) on every boot.
+    // London time, set by net_start() from the RTC and SNTP. Until either
+    // has a good time this is midnight, 1 Jan 1970 (a Thursday).
     time_t t = time(NULL);
     struct tm tm;
     localtime_r(&t, &tm);
@@ -46,9 +47,13 @@ void app_main(void)
     if (motion_start(events) != ESP_OK) {
         ESP_LOGW(TAG, "running without motion sensing");
     }
+    if (net_start() != ESP_OK) {
+        ESP_LOGW(TAG, "running without Wi-Fi: schedule only");
+    }
 
     pet_t pet;
     pet_init(&pet, esp_random());
+    pet_set_place(&pet, net_place(now_ms()));
     pet_clock_t clock = local_clock();
     pet_tick(&pet, &clock, now_ms());
     ESP_LOGI(TAG, "hello, mood=%s", pet_mood_name(pet_view(&pet).mood));
@@ -64,6 +69,7 @@ void app_main(void)
             pet_handle_event(&pet, ev, now_ms());
             continue;
         }
+        pet_set_place(&pet, net_place(now_ms()));
         clock = local_clock();
         pet_tick(&pet, &clock, now_ms());
         screen_draw(&pet, tick++);

@@ -8,3 +8,6 @@ CONFIG_FREERTOS_HZ=1000
 
 # LVGL draws in 40-line strips: the C6 has no PSRAM, so a full frame won't fit.
 CONFIG_BSP_DISPLAY_LVGL_BUF_HEIGHT=40
+
+# Wi-Fi: resync the clock over SNTP every 3 hours (the RTC holds it between).
+CONFIG_LWIP_SNTP_UPDATE_DELAY=10800000

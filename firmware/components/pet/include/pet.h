@@ -48,6 +48,15 @@ typedef enum {
     PET_SCENE_COUNT,
 } pet_scene_t;
 
+// Where he is, as far as the device can tell (from nearby Wi-Fi). UNKNOWN
+// leaves the schedule in charge.
+typedef enum {
+    PET_PLACE_UNKNOWN = 0,
+    PET_PLACE_HOME,        // home network in range: not commuting, whatever the clock says
+    PET_PLACE_COMMUTING,   // tube Wi-Fi seen recently: on the train
+    PET_PLACE_COUNT,
+} pet_place_t;
+
 typedef enum {
     PET_COSTUME_DRACULA = 0,
     PET_COSTUME_CHIIKAWA,
@@ -142,6 +151,7 @@ typedef struct {
 typedef struct {
     pet_mood_t scheduled;      // mood from the clock alone
     pet_scene_t scene;         // me-time scene from the clock alone
+    pet_place_t place;         // where he is; adjusts the scheduled mood
     int happiness;             // 0..PET_HAPPINESS_MAX
     pet_costume_t costume;
     pet_device_t device;
@@ -199,6 +209,11 @@ void pet_init(pet_t *pet, uint32_t seed);
 // Advance time. `now_ms` is a monotonic clock that may wrap.
 // Returns true if anything visible changed and the screen should redraw.
 bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms);
+
+// Tell him where he is. Takes effect on the next pet_tick(). While he's
+// awake, COMMUTING puts him on the train (even over a scheduled spooky), and
+// HOME during a scheduled commute keeps him at home (deadpan).
+void pet_set_place(pet_t *pet, pet_place_t place);
 
 // React to an input. Returns true if the screen should redraw.
 bool pet_handle_event(pet_t *pet, pet_event_t event, uint32_t now_ms);
