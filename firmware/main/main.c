@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "esp_log.h"
+#include "esp_random.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -21,14 +22,20 @@ static uint32_t now_ms(void)
     return (uint32_t)(esp_timer_get_time() / 1000);
 }
 
-static int local_hour(void)
+static pet_clock_t local_clock(void)
 {
-    // TODO: set the clock from the on-board RTC (PCF85063). Until then this
-    // starts at midnight on every boot.
+    // TODO: set the clock (RTC + SNTP) with the Wi-Fi work. Until then this
+    // starts at midnight, 1 Jan 1970 (a Thursday) on every boot.
     time_t t = time(NULL);
     struct tm tm;
     localtime_r(&t, &tm);
-    return tm.tm_hour;
+    return (pet_clock_t){
+        .month = tm.tm_mon + 1,
+        .mday = tm.tm_mday,
+        .wday = tm.tm_wday,
+        .hour = tm.tm_hour,
+        .minute = tm.tm_min,
+    };
 }
 
 void app_main(void)
@@ -41,10 +48,11 @@ void app_main(void)
     }
 
     pet_t pet;
-    pet_init(&pet);
-    pet_tick(&pet, local_hour(), now_ms());
+    pet_init(&pet, esp_random());
+    pet_clock_t clock = local_clock();
+    pet_tick(&pet, &clock, now_ms());
     screen_draw(&pet);
-    ESP_LOGI(TAG, "hello, mood=%s", pet_mood_name(pet.mood));
+    ESP_LOGI(TAG, "hello, mood=%s", pet_mood_name(pet_view(&pet).mood));
 
     for (;;) {
         bool dirty = false;
@@ -52,7 +60,8 @@ void app_main(void)
         if (xQueueReceive(events, &ev, pdMS_TO_TICKS(TICK_MS)) == pdTRUE) {
             dirty |= pet_handle_event(&pet, ev, now_ms());
         }
-        dirty |= pet_tick(&pet, local_hour(), now_ms());
+        clock = local_clock();
+        dirty |= pet_tick(&pet, &clock, now_ms());
         if (dirty) {
             screen_draw(&pet);
         }
