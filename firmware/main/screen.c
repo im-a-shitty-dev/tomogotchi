@@ -2,8 +2,15 @@
 
 #include <string.h>
 
+#include "bsp/display.h"
 #include "bsp/esp-bsp.h"
+#include "bsp/touch.h"
+#include "driver/gpio.h"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_touch.h"
 #include "esp_log.h"
+#include "esp_lvgl_port.h"
+#include "freertos/task.h"
 #include "lvgl.h"
 #include "scene.h"
 #include "sprites_gen.h"
@@ -89,16 +96,76 @@ static void on_long_press(lv_event_t *e)
     post((pet_event_t){.type = PET_INPUT_LONG_PRESS});
 }
 
+// --- Display start-up -------------------------------------------------------
+// This is bsp_display_start() done by hand, for two reasons. We keep the panel
+// IO handle, to send the panel to sleep (the BSP only offers brightness). And
+// LVGL polls the touch chip instead of using its interrupt line, so the line
+// is free for power.c to wake the board with a tap.
+
+static esp_lcd_panel_io_handle_t s_io;
+static lv_indev_t *s_touch;
+static TaskHandle_t s_lvgl_task;
+
+// The panels (SH8601 or CO5300) want even-aligned areas.
+static void round_area(lv_event_t *e)
+{
+    lv_area_t *a = lv_event_get_param(e);
+    a->x1 &= ~1;
+    a->y1 &= ~1;
+    a->x2 |= 1;
+    a->y2 |= 1;
+}
+
+static lv_display_t *display_start(void)
+{
+    const lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+    if (lvgl_port_init(&port_cfg) != ESP_OK) {
+        return NULL;
+    }
+    s_lvgl_task = xTaskGetHandle("taskLVGL");
+
+    esp_lcd_panel_handle_t panel;
+    if (bsp_display_new(NULL, &panel, &s_io) != ESP_OK) {
+        return NULL;
+    }
+    const lvgl_port_display_cfg_t disp_cfg = {
+        .io_handle = s_io,
+        .panel_handle = panel,
+        .buffer_size = BSP_LCD_DRAW_BUFF_SIZE,
+        .double_buffer = BSP_LCD_DRAW_BUFF_DOUBLE,
+        .hres = BSP_LCD_H_RES,
+        .vres = BSP_LCD_V_RES,
+        .color_format = LV_COLOR_FORMAT_RGB565,
+        .flags = {.sw_rotate = true, .swap_bytes = true},
+    };
+    lv_display_t *display = lvgl_port_add_disp(&disp_cfg);
+    if (display == NULL) {
+        return NULL;
+    }
+    lv_display_add_event_cb(display, round_area, LV_EVENT_INVALIDATE_AREA, NULL);
+
+    esp_lcd_touch_handle_t tp;
+    if (bsp_touch_new(NULL, &tp) == ESP_OK) {
+        tp->config.int_gpio_num = GPIO_NUM_NC;  // poll; power.c owns the line
+        const lvgl_port_touch_cfg_t touch_cfg = {.disp = display, .handle = tp};
+        s_touch = lvgl_port_add_touch(&touch_cfg);
+    }
+    if (s_touch == NULL) {
+        ESP_LOGW(TAG, "touch unavailable");
+    }
+    bsp_display_brightness_set(100);
+    return display;
+}
+
 esp_err_t screen_start(QueueHandle_t events)
 {
     s_events = events;
 
-    lv_display_t *display = bsp_display_start();
+    lv_display_t *display = display_start();
     if (display == NULL) {
         ESP_LOGE(TAG, "display init failed");
         return ESP_FAIL;
     }
-    ESP_ERROR_CHECK(bsp_display_backlight_on());
 
     bsp_display_lock(0);
 
@@ -127,6 +194,67 @@ esp_err_t screen_start(QueueHandle_t events)
     return ESP_OK;
 }
 
+// --- Screen sleep -------------------------------------------------------------
+// Off: brightness to zero, panel to sleep, LVGL stopped so nothing wakes the
+// chip. The LVGL task is suspended because with its timers off it would spin
+// every millisecond and keep the chip out of light sleep.
+
+#define LCD_CMD(c) ((0x02u << 24) | ((uint32_t)(c) << 8))  // QSPI write, as the BSP does
+#define LCD_SLPIN 0x10
+#define LCD_SLPOUT 0x11
+#define LCD_DISPOFF 0x28
+#define LCD_DISPON 0x29
+
+static bool s_on = true;
+static bool s_prev_valid;
+
+static void lcd_cmd(uint8_t cmd)
+{
+    esp_err_t err = esp_lcd_panel_io_tx_param(s_io, LCD_CMD(cmd), NULL, 0);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "panel cmd 0x%02x: %s", cmd, esp_err_to_name(err));
+    }
+}
+
+void screen_set_on(bool on)
+{
+    if (on == s_on) {
+        return;
+    }
+    s_on = on;
+    if (!on) {
+        bsp_display_lock(0);
+        cancel_tap();
+        bsp_display_brightness_set(0);
+        lcd_cmd(LCD_DISPOFF);
+        lcd_cmd(LCD_SLPIN);
+        lvgl_port_stop();
+        if (s_lvgl_task) {
+            vTaskSuspend(s_lvgl_task);  // while we hold the lock, so not mid-frame
+        }
+        bsp_display_unlock();
+        ESP_LOGI(TAG, "screen off");
+        return;
+    }
+
+    lcd_cmd(LCD_SLPOUT);
+    vTaskDelay(pdMS_TO_TICKS(120));  // panel needs this after sleep-out
+    lcd_cmd(LCD_DISPON);
+    if (s_lvgl_task) {
+        vTaskResume(s_lvgl_task);
+    }
+    lvgl_port_resume();
+    bsp_display_lock(0);
+    s_prev_valid = false;  // send the whole frame again
+    lv_obj_invalidate(lv_screen_active());
+    if (s_touch) {
+        lv_indev_wait_release(s_touch);  // the waking tap isn't also a poke
+    }
+    bsp_display_unlock();
+    bsp_display_brightness_set(100);
+    ESP_LOGI(TAG, "screen on");
+}
+
 // --- Drawing ----------------------------------------------------------------
 // The scene component (components/scene) decides what to draw for the pet's
 // view at each animation tick and renders it into the canvas buffer. We then
@@ -134,7 +262,6 @@ esp_err_t screen_start(QueueHandle_t events)
 // so a blink redraws a few art pixels instead of the whole panel.
 
 static uint16_t s_prev[SCREEN_ART_W * SCREEN_ART_H];
-static bool s_prev_valid;
 
 // Mark art pixels `r` for redraw, in screen coordinates.
 static void invalidate_art(const scene_rect_t *r)
@@ -182,6 +309,9 @@ void screen_draw(const pet_t *pet, uint32_t tick)
         ESP_LOGI(TAG, "%s: \"%s\"", pet_mood_name(v.mood), v.line);  // no speech bubble yet
     }
     s_last_line = v.line;
+    if (!s_on) {
+        return;
+    }
     if (!bsp_display_lock(100)) {
         ESP_LOGW(TAG, "display busy, skipping frame");
         return;

@@ -21,6 +21,8 @@ static const char *TAG = "motion";
 
 static qmi8658_dev_t s_imu;
 static QueueHandle_t s_events;
+static TaskHandle_t s_task;
+static volatile bool s_active = true;
 
 static esp_err_t imu_init(void)
 {
@@ -59,6 +61,10 @@ static void motion_task(void *arg)
     TickType_t cooldown_until = 0;
 
     for (;;) {
+        if (!s_active) {
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);  // until motion_set_active(true)
+            continue;
+        }
         vTaskDelay(pdMS_TO_TICKS(SAMPLE_PERIOD_MS));
 
         qmi8658_data_t d = {0};
@@ -99,6 +105,19 @@ esp_err_t motion_start(QueueHandle_t events)
         return err;
     }
 
-    BaseType_t ok = xTaskCreate(motion_task, "motion", 3072, NULL, 4, NULL);
+    BaseType_t ok = xTaskCreate(motion_task, "motion", 3072, NULL, 4, &s_task);
     return ok == pdPASS ? ESP_OK : ESP_ERR_NO_MEM;
+}
+
+void motion_set_active(bool active)
+{
+    if (s_task == NULL || active == s_active) {
+        return;
+    }
+    s_active = active;
+    // Powered down, the sensor draws next to nothing.
+    qmi8658_enable_sensors(&s_imu, active ? QMI8658_ENABLE_ACCEL : QMI8658_DISABLE_ALL);
+    if (active) {
+        xTaskNotifyGive(s_task);
+    }
 }

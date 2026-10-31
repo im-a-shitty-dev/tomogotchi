@@ -152,6 +152,7 @@ typedef struct {
     pet_mood_t scheduled;      // mood from the clock alone
     pet_scene_t scene;         // me-time scene from the clock alone
     pet_place_t place;         // where he is; adjusts the scheduled mood
+    bool charging;             // on the charger: me-time while awake
     int happiness;             // 0..PET_HAPPINESS_MAX
     pet_costume_t costume;
     pet_device_t device;
@@ -214,6 +215,12 @@ bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms);
 // awake, COMMUTING puts him on the train (even over a scheduled spooky), and
 // HOME during a scheduled commute keeps him at home (deadpan).
 void pet_set_place(pet_t *pet, pet_place_t place);
+
+// Tell him whether the device is charging. Takes effect on the next
+// pet_tick(). While charging and awake he has me-time (bath on weekdays,
+// couch or beach at weekends), over the schedule and the commute. He still
+// sleeps at bedtime.
+void pet_set_charging(pet_t *pet, bool charging);
 
 // React to an input. Returns true if the screen should redraw.
 bool pet_handle_event(pet_t *pet, pet_event_t event, uint32_t now_ms);

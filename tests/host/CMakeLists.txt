@@ -33,3 +33,9 @@ add_test(NAME scene COMMAND test_scene)
 # Not a test: dumps animation frames for tools/sprites/animate.py.
 add_executable(scene_dump scene_dump.c)
 target_link_libraries(scene_dump PRIVATE scene)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../firmware/components/wake wake)
+
+add_executable(test_wake test_wake.c)
+target_link_libraries(test_wake PRIVATE wake)
+add_test(NAME wake COMMAND test_wake)

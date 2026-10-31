@@ -1,6 +1,8 @@
 // The pixel-art screen: a small logical canvas scaled up to the AMOLED panel.
 #pragma once
 
+#include <stdbool.h>
+
 #include "esp_err.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -15,6 +17,10 @@
 
 // Start the display and touch. Taps are posted to `events` as PET_EVENT_POKE.
 esp_err_t screen_start(QueueHandle_t events);
+
+// Turn the panel off (asleep, LVGL stopped) or back on. While off,
+// screen_draw() does nothing and touches aren't read.
+void screen_set_on(bool on);
 
 // Draw the pet at animation tick `tick` (one per SCENE_TICK_MS). Call every
 // tick; only the part of the screen that changed is sent to the panel.
