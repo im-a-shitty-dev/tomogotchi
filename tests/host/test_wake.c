@@ -63,21 +63,28 @@ static void test_button_toggles(void)
     CHECK(!wake_update(&w, 10 * SEC + WAKE_TIMEOUT_MS));
 }
 
-static void test_charging_keeps_it_on(void)
+static void test_charging_stays_on_for_an_hour(void)
 {
     wake_t w;
     wake_init(&w, 0);
     wake_update(&w, WAKE_TIMEOUT_MS);
     wake_set_charging(&w, true, 60 * SEC);  // plugging in wakes it
     CHECK(wake_update(&w, 60 * SEC));
-    CHECK(wake_update(&w, 60 * 60 * SEC));
-    wake_button(&w, 60 * 60 * SEC);  // the button can't turn it off
-    CHECK(wake_update(&w, 60 * 60 * SEC));
+    CHECK(wake_update(&w, 60 * SEC + WAKE_CHARGING_TIMEOUT_MS - 1));
+    CHECK(!wake_update(&w, 60 * SEC + WAKE_CHARGING_TIMEOUT_MS));
 
-    // Unplugged: a full timeout from then.
-    wake_set_charging(&w, false, 2 * 60 * 60 * SEC);
-    CHECK(wake_update(&w, 2 * 60 * 60 * SEC + WAKE_TIMEOUT_MS - 1));
-    CHECK(!wake_update(&w, 2 * 60 * 60 * SEC + WAKE_TIMEOUT_MS));
+    // A tap brings it back for another hour; the button can still turn it off.
+    uint32_t t = 2 * WAKE_CHARGING_TIMEOUT_MS;
+    wake_tap(&w, t);
+    CHECK(wake_update(&w, t + 10 * 60 * SEC));
+    wake_button(&w, t + 10 * 60 * SEC);
+    CHECK(!wake_update(&w, t + 10 * 60 * SEC));
+
+    // Unplugged: on again, with the short timeout.
+    t = 3 * WAKE_CHARGING_TIMEOUT_MS;
+    wake_set_charging(&w, false, t);
+    CHECK(wake_update(&w, t + WAKE_TIMEOUT_MS - 1));
+    CHECK(!wake_update(&w, t + WAKE_TIMEOUT_MS));
 }
 
 static void test_clock_wrap(void)
@@ -96,7 +103,7 @@ int main(void)
     test_activity_while_dark_does_not_wake();
     test_tap_wakes();
     test_button_toggles();
-    test_charging_keeps_it_on();
+    test_charging_stays_on_for_an_hour();
     test_clock_wrap();
     if (failures) {
         fprintf(stderr, "%d failure(s)\n", failures);

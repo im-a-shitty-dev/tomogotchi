@@ -8,7 +8,8 @@
 // To save battery the screen sleeps after 30 seconds without a touch (see
 // components/wake). While it's dark we "doze": no drawing, no motion
 // sensing, and the chip light-sleeps between pet ticks once a second. A
-// button press or a tap brings him back. On the charger the screen stays on.
+// button press or a tap brings him back. On the charger the screen stays on
+// for an hour without a touch.
 #include <time.h>
 
 #include "esp_log.h"
