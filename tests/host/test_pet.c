@@ -35,6 +35,7 @@ static const pet_event_t SHAKE = {.type = PET_INPUT_SHAKE};
 static const pet_event_t LONG_PRESS = {.type = PET_INPUT_LONG_PRESS};
 static const pet_event_t SWIPE = {.type = PET_INPUT_SWIPE, .direction = 1};
 static const pet_event_t SWIPE_BACK = {.type = PET_INPUT_SWIPE, .direction = -1};
+static const pet_event_t SWIPE_UP = {.type = PET_INPUT_SWIPE_UP};
 
 static pet_event_t give(pet_item_t item)
 {
@@ -476,6 +477,80 @@ static void test_no_dressing_up_while_asleep(void)
     CHECK(pet_view(&pet).mood == PET_MOOD_ASLEEP);
 }
 
+// --- Scenes, any time ----------------------------------------------------------
+
+static void test_swipe_up_cycles_scenes_then_back_to_schedule(void)
+{
+    pet_t pet = pet_at(TUE, 12, 0);
+    pet_handle_event(&pet, SWIPE_UP, 100);
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.mood == PET_MOOD_ME_TIME && v.scene == PET_SCENE_BATH);
+    pet_handle_event(&pet, SWIPE_UP, 200);
+    CHECK(pet_view(&pet).scene == PET_SCENE_COUCH);
+    CHECK(pet_view(&pet).outfit == PET_OUTFIT_LYING);
+    pet_handle_event(&pet, SWIPE_UP, 300);
+    CHECK(pet_view(&pet).scene == PET_SCENE_BEACH);
+    pet_handle_event(&pet, SWIPE_UP, 400);
+    v = pet_view(&pet);
+    CHECK(v.mood == PET_MOOD_DEADPAN && v.scene == PET_SCENE_NONE);
+}
+
+static void test_swipe_up_in_scheduled_me_time_moves_on(void)
+{
+    pet_t pet = pet_at(TUE, 18, 0);  // bath by the schedule
+    pet_handle_event(&pet, SWIPE_UP, 100);
+    CHECK(pet_view(&pet).scene == PET_SCENE_COUCH);
+}
+
+static void test_swipe_up_takes_the_costume_off(void)
+{
+    pet_t pet = pet_at(TUE, 12, 0);
+    pet_handle_event(&pet, SWIPE, 100);
+    CHECK(pet_view(&pet).mood == PET_MOOD_SPOOKY);
+    pet_handle_event(&pet, SWIPE_UP, 200);
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.mood == PET_MOOD_ME_TIME && v.scene == PET_SCENE_BATH);
+    pet_handle_event(&pet, SWIPE, 300);  // and a costume swipe still works
+    CHECK(pet_view(&pet).mood == PET_MOOD_SPOOKY);
+}
+
+static void test_chosen_scene_lasts_until_bed(void)
+{
+    pet_t pet = pet_at(TUE, 12, 0);
+    pet_handle_event(&pet, SWIPE_UP, 100);
+    tick(&pet, TUE, 15, 30, 200);  // commute time
+    CHECK(pet_view(&pet).scene == PET_SCENE_BATH);
+    tick(&pet, TUE, 21, 0, 300);
+    CHECK(pet_view(&pet).mood == PET_MOOD_ASLEEP);
+    tick(&pet, WED, 7, 0, 400);
+    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+}
+
+static void test_no_scene_swipe_while_asleep_or_sulking(void)
+{
+    pet_t pet = pet_at(TUE, 23, 0);
+    pet_handle_event(&pet, SWIPE_UP, 100);
+    CHECK(pet_view(&pet).mood == PET_MOOD_ASLEEP);
+    tick(&pet, WED, 7, 0, 200);
+    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+
+    pet = sulking_pet();
+    pet_handle_event(&pet, SWIPE_UP, 1000);
+    CHECK(pet_view(&pet).back && pet_view(&pet).mood == PET_MOOD_DEADPAN);
+}
+
+static void test_sulking_on_the_couch_gets_him_up(void)
+{
+    pet_t pet = pet_at(TUE, 12, 0);
+    pet_handle_event(&pet, SWIPE_UP, 100);
+    pet_handle_event(&pet, SWIPE_UP, 200);  // couch
+    for (int i = 0; i < PET_HAPPINESS_START; i++) {
+        pet_handle_event(&pet, SHAKE, 300 + i);
+    }
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.sulking && v.back && v.mood == PET_MOOD_DEADPAN);
+}
+
 // --- Misc ----------------------------------------------------------------------
 
 static void test_same_seed_same_lines(void)
@@ -647,6 +722,12 @@ int main(void)
     test_costume_stays_on_through_the_day_and_off_for_bed();
     test_scheduled_spooky_just_wraps();
     test_no_dressing_up_while_asleep();
+    test_swipe_up_cycles_scenes_then_back_to_schedule();
+    test_swipe_up_in_scheduled_me_time_moves_on();
+    test_swipe_up_takes_the_costume_off();
+    test_chosen_scene_lasts_until_bed();
+    test_no_scene_swipe_while_asleep_or_sulking();
+    test_sulking_on_the_couch_gets_him_up();
     test_same_seed_same_lines();
     test_names();
     test_commuting_puts_him_on_the_train();
