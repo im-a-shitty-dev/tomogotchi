@@ -35,6 +35,19 @@ typedef struct {
 void sprite_draw(uint16_t *buf, int stride, int w, int h,
                  const sprite_t *s, unsigned frame, int dx, int dy);
 
+// One glyph of the speech-bubble font: 11 rows of up to 16 pixels, with
+// bit k of a row lighting column k. Draw the next glyph `advance` px on.
+#define SPRITE_GLYPH_ROWS 11
+typedef struct {
+    uint32_t codepoint;
+    uint8_t advance;
+    uint8_t width;
+    uint16_t rows[SPRITE_GLYPH_ROWS];
+} sprite_glyph_t;
+
+// The glyph for a Unicode code point, or the font's '?' if it has none.
+const sprite_glyph_t *sprite_glyph(uint32_t codepoint);
+
 #ifdef __cplusplus
 }
 #endif

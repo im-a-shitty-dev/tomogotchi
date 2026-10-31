@@ -50,6 +50,8 @@ typedef enum {
     SPRITE_BODY_SYLVEON_BACK,
     SPRITE_BODY_PJS_BACK,
     SPRITE_BODY_BATH_BACK,
+    SPRITE_BODY_COUCH_HAND,
+    SPRITE_BODY_BEACH_HAND,
     SPRITE_BODY_COUNT
 } sprite_body_t;
 
@@ -77,12 +79,16 @@ typedef enum {
     SPRITE_PROP_GUMMY,
     SPRITE_PROP_CRISPS,
     SPRITE_PROP_COFFEE,
+    SPRITE_PROP_GUMMY_ICON,
+    SPRITE_PROP_CRISPS_ICON,
+    SPRITE_PROP_COFFEE_ICON,
     SPRITE_PROP_COUNT
 } sprite_prop_t;
 
 typedef enum {
     SPRITE_FRONT_TUB,
     SPRITE_FRONT_BLANKET,
+    SPRITE_FRONT_BATH_ARM,
     SPRITE_FRONT_COUNT
 } sprite_front_t;
 
@@ -97,6 +103,16 @@ typedef enum {
     SPRITE_FX_FOAM,
     SPRITE_FX_RAIN,
     SPRITE_FX_SPARKLE,
+    SPRITE_FX_TAIL_PIKACHU,
+    SPRITE_FX_TAIL_PIKACHU_BACK,
+    SPRITE_FX_TAIL_SYLVEON,
+    SPRITE_FX_TAIL_SYLVEON_BACK,
+    SPRITE_FX_TAIL_TREX,
+    SPRITE_FX_TAIL_TREX_BACK,
+    SPRITE_FX_TAIL_TRIKE,
+    SPRITE_FX_TAIL_TRIKE_BACK,
+    SPRITE_FX_RIBBONS_SYLVEON,
+    SPRITE_FX_RIBBONS_SYLVEON_BACK,
     SPRITE_FX_COUNT
 } sprite_fx_t;
 
@@ -108,10 +124,17 @@ typedef enum {
     SPRITE_HUD_POP_UP,
     SPRITE_HUD_POP_DOWN,
     SPRITE_HUD_POP_DOWN_BEACH,
+    SPRITE_HUD_EMOTE_VEIN,
+    SPRITE_HUD_EMOTE_HEART,
+    SPRITE_HUD_EMOTE_NOTE,
+    SPRITE_HUD_EMOTE_SWIRL,
+    SPRITE_HUD_EMOTE_BANG,
+    SPRITE_HUD_EMOTE_DOTS,
+    SPRITE_HUD_EMOTE_ZZZ,
     SPRITE_HUD_COUNT
 } sprite_hud_t;
 
-#define SPRITE_PALETTE_SIZE 173
+#define SPRITE_PALETTE_SIZE 180
 extern const uint16_t sprite_palette[SPRITE_PALETTE_SIZE];
 
 extern const sprite_t sprite_bg[SPRITE_BG_COUNT > 0 ? SPRITE_BG_COUNT : 1];
@@ -124,10 +147,19 @@ extern const sprite_t sprite_hud[SPRITE_HUD_COUNT > 0 ? SPRITE_HUD_COUNT : 1];
 // face and props shifted by this much.
 extern const sprite_offset_t sprite_head_offset[SPRITE_BODY_COUNT];
 
+// Where a body's snack hand is, relative to the standing pose's. Snack
+// props are drawn in the standing hand, so shift them by this much.
+extern const sprite_offset_t sprite_hand_offset[SPRITE_BODY_COUNT];
+
 // Face and prop art for a body. Most bodies share one set; masks and hoods
 // have their own. Returns NULL when that body shows no such face or prop.
 const sprite_t *sprite_face(sprite_body_t body, sprite_face_t face);
 const sprite_t *sprite_prop(sprite_body_t body, sprite_prop_t prop);
+
+// The speech-bubble font, sorted by code point. Look glyphs up with
+// sprite_glyph().
+#define SPRITE_GLYPH_COUNT 180
+extern const sprite_glyph_t sprite_glyphs[SPRITE_GLYPH_COUNT];
 
 #ifdef __cplusplus
 }

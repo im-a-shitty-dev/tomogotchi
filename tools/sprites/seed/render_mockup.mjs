@@ -20,7 +20,8 @@ const code = `let t = 0, scene = 'bath';
 ${src.slice(start, end)}
 ${blanket[0]}
 return {
-  W, H, P, Layer, drawItem, drawTomo, drawScene, drawTub, drawBlanket, drawLying,
+  W, H, P, Layer, drawItem, drawFingers, drawBathArm, drawTomo, drawScene, drawTub, drawBlanket, drawLying,
+  HAND, LY_HAND, BATH_HAND,
   set: (tt, sc) => { t = tt; scene = sc; },
 };`;
 const M = new Function(code)();
@@ -29,8 +30,8 @@ const P = M.P;
 // Lying poses, as set up in the mockup's frame(). Keep in sync with it.
 // ox shifts the whole pose sideways (the mockup's drawLying has none built in).
 const LYING = {
-  couch: { by: 42, ox: -1, top: P.tee, topS: P.teeS, shorts: P.shorts, shortsS: P.shortsS, hold: 'manga' },
-  beach: { by: 38, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
+  couch: { kind: 'couch', by: 42, ox: -1, top: P.tee, topS: P.teeS, shorts: P.shorts, shortsS: P.shortsS, hold: 'manga' },
+  beach: { kind: 'beach', by: 38, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
 };
 const LYING_HEAD = (ly) => [-11 + (ly.ox || 0), ly.by - 35];
 
@@ -50,7 +51,8 @@ function render(req) {
       const ly = LYING[req.pose], [hx, hy] = LYING_HEAD(ly), ox = ly.ox || 0;
       M.drawLying(L, ly, 'body');
       M.drawTomo(L, { ox: hx - ox, oy: hy, face: req.face, item: req.item, noBody: true });
-      if (!req.item) M.drawLying(L, ly, 'hold');
+      if (req.hold) M.drawLying(L, { ...ly, hold: req.hold }, 'hold');  // 'hand': bare arm for a snack
+      else if (!req.item) M.drawLying(L, ly, 'hold');
       L.outline(P.OL);
       if (ox) {  // slide everything sideways
         const a = L.a.slice();
@@ -88,7 +90,16 @@ function render(req) {
       for (const [x, y] of [[2, 37], [3, 35], [49, 36], [48, 34], [10, 35], [41, 34]]) L.px(x, y - (req.t % 2), '#9fd8ff');
       break;
     }
-    case 'item': M.drawItem(L, req.item, 0, 0); L.outline(P.OL); break;
+    // A snack in his fingers, at the standing hand point.
+    case 'item': {
+      const [hx, hy] = M.HAND.stand;
+      M.drawItem(L, req.item, hx, hy);
+      if (!req.noFingers) M.drawFingers(L, hx, hy);  // without: the snack picker's icon
+      L.outline(P.OL);
+      break;
+    }
+    // The arm that pokes out of the foam in the bath, fingers and no snack.
+    case 'batharm': M.drawBathArm(L, null); L.outline(P.OL); break;
     case 'tub': M.drawTub(L, 0, false, false); L.outline(P.OL); break;
     case 'blanket': M.drawBlanket(L); L.outline(P.OL); break;
     default: throw new Error(`unknown kind ${req.kind}`);
@@ -96,6 +107,15 @@ function render(req) {
   return L.a;
 }
 
-const out = { _lying_head: Object.fromEntries(Object.entries(LYING).map(([k, ly]) => [k, LYING_HEAD(ly)])) };
+// Hand points (top-left of his 3x2 fingers) for holding a snack.
+const lyingHand = (ly) => { const [x, y] = M.LY_HAND[ly.kind](ly.by); return [x + (ly.ox || 0), y]; };
+const out = {
+  _lying_head: Object.fromEntries(Object.entries(LYING).map(([k, ly]) => [k, LYING_HEAD(ly)])),
+  _hands: {
+    stand: M.HAND.stand, back: M.HAND.backStand, bath_back: M.HAND.bathBack, bath: M.BATH_HAND,
+    dracula_back: M.HAND.draculaBack,
+    ...Object.fromEntries(Object.entries(LYING).map(([k, ly]) => [k, lyingHand(ly)])),
+  },
+};
 for (const req of JSON.parse(readFileSync(reqPath, 'utf8'))) out[req.name] = render(req);
 process.stdout.write(JSON.stringify(out));

@@ -6,19 +6,41 @@
 # List order sets the C enum values.
 
 bg = ["deadpan", "morning", "commute", "bath", "couch", "beach", "night", "asleep", "spooky"]
-fx = ["waves", "tunnel", "stars", "steam", "zzz", "bat", "splash", "foam", "rain", "sparkle"]
-body = ["casual", "coat", "dracula", "chiikawa", "sadako", "trex", "barrel", "pikachu", "jason", "trike", "sylveon", "pjs", "pjs_phone", "pjs_switch", "head", "couch", "beach", "casual_back", "dracula_back", "chiikawa_back", "sadako_back", "trex_back", "barrel_back", "pikachu_back", "jason_back", "trike_back", "sylveon_back", "pjs_back", "bath_back"]
+fx = ["waves", "tunnel", "stars", "steam", "zzz", "bat", "splash", "foam", "rain", "sparkle", "tail_pikachu", "tail_pikachu_back", "tail_sylveon", "tail_sylveon_back", "tail_trex", "tail_trex_back", "tail_trike", "tail_trike_back", "ribbons_sylveon", "ribbons_sylveon_back"]
+body = ["casual", "coat", "dracula", "chiikawa", "sadako", "trex", "barrel", "pikachu", "jason", "trike", "sylveon", "pjs", "pjs_phone", "pjs_switch", "head", "couch", "beach", "casual_back", "dracula_back", "chiikawa_back", "sadako_back", "trex_back", "barrel_back", "pikachu_back", "jason_back", "trike_back", "sylveon_back", "pjs_back", "bath_back", "couch_hand", "beach_hand"]
 face = ["blank", "blink", "smirk", "fang", "happy", "annoyed", "grumpy", "grumpyblink", "dizzy", "sleep", "screen", "read", "shades"]
-prop = ["phone", "cup", "bedhead", "gummy", "crisps", "coffee"]
-front = ["tub", "blanket"]
-# Peek strip (clock, hearts) and pop-up hearts. Drawn by scene code at offsets.
-hud = ["digits", "colon", "heart", "heart_empty", "pop_up", "pop_down", "pop_down_beach"]
+prop = ["phone", "cup", "bedhead", "gummy", "crisps", "coffee", "gummy_icon", "crisps_icon", "coffee_icon"]
+front = ["tub", "blanket", "bath_arm"]
+# Peek strip (clock, hearts), pop-up hearts, and the emotes by his head
+# (art at 1,1 inside its outline). Drawn by scene code at offsets.
+hud = ["digits", "colon", "heart", "heart_empty", "pop_up", "pop_down", "pop_down_beach", "emote_vein", "emote_heart", "emote_note", "emote_swirl", "emote_bang", "emote_dots", "emote_zzz"]
 
 # Faces and props are drawn at the body's head offset. Bodies not listed
 # use [0, 0]. Lying poses have the head further left and lower.
 [head_offset]
 couch = [-12, 7]
 beach = [-11, 3]
+couch_hand = [-12, 7]
+beach_hand = [-11, 3]
+
+# Snacks are cut in the standing hand. Bodies whose hand is elsewhere
+# (back views, lying with a free hand, the bath arm for head) list how far.
+[hand_offset]
+head = [6, -17]
+couch_hand = [1, -17]
+beach_hand = [-5, -20]
+casual_back = [2, 0]
+dracula_back = [6, -2]
+chiikawa_back = [2, 0]
+sadako_back = [2, 0]
+trex_back = [2, 0]
+barrel_back = [2, 0]
+pikachu_back = [2, 0]
+jason_back = [2, 0]
+trike_back = [2, 0]
+sylveon_back = [2, 0]
+pjs_back = [2, 0]
+bath_back = [-26, -8]
 
 # Bodies that need their own face or prop art (masks, hoods over the
 # cheeks). The value is a PNG under face/ or prop/ without .png, or "" to
@@ -34,5 +56,6 @@ jason = { blank = "", blink = "jason/blink", smirk = "jason/smirk", fang = "jaso
 trike = { annoyed = "trike/annoyed" }
 sylveon = { annoyed = "sylveon/annoyed" }
 couch = { annoyed = "couch/annoyed" }
+couch_hand = { annoyed = "couch/annoyed" }
 
 [prop_override]

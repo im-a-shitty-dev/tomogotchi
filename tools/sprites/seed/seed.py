@@ -76,11 +76,30 @@ LOOSE_FX = {
 # New art drawn by code here rather than cut from the mockup.
 DRAWN_FX = {"foam": foam.frames}  # bubbles overflowing the tub
 
+# Costumes whose tail wags (and Sylveon's ribbons), cut as their own strips
+# and left out of the bodies. From the front the tail goes behind him and
+# from the back in front; Sylveon's ribbons are always in front.
+TAILED = ["pikachu", "sylveon", "trex", "trike"]
+TAIL_FRAMES = 4
+
+
+def no_tail(c):
+    return {"noTail": True} if c in TAILED else {}
+
+
+def tail_fx():
+    names = []
+    for c in TAILED:
+        for suffix in ("", "_back"):
+            names.append(f"tail_{c}{suffix}")
+    return names + ["ribbons_sylveon", "ribbons_sylveon_back"]
+
+
 # Front-facing bodies, as drawTomo options.
 FRONT = {
     "casual": {},
     "coat": {"outfit": "coat", "cans": True},  # commute: trench coat, headphones on
-    **{c: {"outfit": c} for c in COSTUMES},
+    **{c: {"outfit": c, **no_tail(c)} for c in COSTUMES},
     "pjs": {"outfit": "pjs"},
     # At night his face is lit by the screen and both hands hold the device.
     # The hands move, so each device is its own body rather than a prop.
@@ -93,7 +112,7 @@ FRONT = {
 LYING = ["couch", "beach"]
 BACK = {
     "casual_back": {"back": True},
-    **{f"{c}_back": {"outfit": c, "back": True} for c in COSTUMES},
+    **{f"{c}_back": {"outfit": c, "back": True, **no_tail(c)} for c in COSTUMES},
     "pjs_back": {"outfit": "pjs", "glow": True, "back": True},
     # Standing up in the bath, facing away. The tub goes in front.
     "bath_back": {"outfit": "bath", "back": True, "bathBack": True},
@@ -101,7 +120,7 @@ BACK = {
 # Props in his hand (phone, morning coffee) and the morning bed hair, per body.
 HELD = {"phone": {"phone": True}, "cup": {"cup": True}, "bedhead": {"bedhead": True}}
 HELD_ON = {"casual": ["phone", "cup", "bedhead"], "coat": ["phone"]}
-PROPS = [*HELD, *ITEMS]
+PROPS = [*HELD, *ITEMS, *(f"{i}_icon" for i in ITEMS)]  # icons: no fingers, for the snack picker
 
 
 def render_all(mockup: Path, reqs: list) -> dict:
@@ -166,7 +185,7 @@ class Writer:
         self.count += 1
 
 
-def write_manifest(out: Path, bodies, head_offsets, overrides):
+def write_manifest(out: Path, bodies, head_offsets, hand_offsets, overrides):
     def names(xs):
         return "[" + ", ".join(f'"{x}"' for x in xs) + "]"
 
@@ -179,17 +198,24 @@ def write_manifest(out: Path, bodies, head_offsets, overrides):
         "# List order sets the C enum values.",
         "",
         "bg = " + names(BACKGROUNDS),
-        "fx = " + names([*FX, *LOOSE_FX, *DRAWN_FX]),
+        "fx = " + names([*FX, *LOOSE_FX, *DRAWN_FX, *tail_fx()]),
         "body = " + names(bodies),
         "face = " + names(FACES),
         "prop = " + names(PROPS),
-        'front = ["tub", "blanket"]',
+        'front = ["tub", "blanket", "bath_arm"]',
         "",
         "# Faces and props are drawn at the body's head offset. Bodies not listed",
         "# use [0, 0]. Lying poses have the head further left and lower.",
         "[head_offset]",
     ]
     lines += [f"{b} = [{x}, {y}]" for b, (x, y) in head_offsets.items()]
+    lines += [
+        "",
+        "# Snacks are cut in the standing hand. Bodies whose hand is elsewhere",
+        "# (back views, lying with a free hand, the bath arm for head) list how far.",
+        "[hand_offset]",
+    ]
+    lines += [f"{b} = [{x}, {y}]" for b, (x, y) in hand_offsets.items()]
     lines += [
         "",
         "# Bodies that need their own face or prop art (masks, hoods over the",
@@ -218,8 +244,10 @@ def main():
                  for t in ticks]
     for name, (kind, ticks) in LOOSE_FX.items():
         reqs += [{"name": f"fx:{name}:{t}", "kind": kind, "t": t} for t in ticks]
-    reqs += [{"name": "front:tub", "kind": "tub"}, {"name": "front:blanket", "kind": "blanket"}]
+    reqs += [{"name": "front:tub", "kind": "tub"}, {"name": "front:blanket", "kind": "blanket"},
+             {"name": "front:bath_arm", "kind": "batharm"}]
     reqs += [{"name": f"item:{i}", "kind": "item", "item": i} for i in ITEMS]
+    reqs += [{"name": f"icon:{i}", "kind": "item", "item": i, "noFingers": True} for i in ITEMS]
     for body, opts in FRONT.items():
         reqs.append(tomo(f"{body}:", opts))
         reqs += [tomo(f"{body}:{f}", {**opts, "face": f}) for f in FACES]
@@ -227,9 +255,18 @@ def main():
             reqs.append(tomo(f"{body}+{prop}", {**opts, **HELD[prop]}))
             reqs.append(tomo(f"{body}:smirk+{prop}", {**opts, **HELD[prop], "face": "smirk"}))
     for pose in LYING:
+        reqs.append({"name": f"{pose}_hand:", "kind": "lying", "pose": pose, "hold": "hand"})
         reqs.append({"name": f"{pose}:", "kind": "lying", "pose": pose})
         reqs += [{"name": f"{pose}:{f}", "kind": "lying", "pose": pose, "face": f} for f in FACES]
     reqs += [tomo(f"{b}:", o) for b, o in BACK.items()]
+    for c in TAILED:
+        for back in (False, True):
+            reqs += [tomo(f"tail:{c}:{int(back)}:{k}", {"outfit": c, "back": back, "tailOnly": True, "tailFrame": k})
+                     for k in range(TAIL_FRAMES)]
+            if c == "sylveon":
+                reqs += [tomo(f"ribbons:{c}:{int(back)}:{k}",
+                              {"outfit": c, "back": back, "ribbonsOnly": True, "ribbonFrame": k})
+                         for k in range(TAIL_FRAMES)]
     R = render_all(args.mockup, reqs)
 
     # Work everything out before touching the output folder.
@@ -246,12 +283,13 @@ def main():
         files[f"fx/{name}"] = [R[f"fx:{name}:{t}"] for t in ticks]
     for name, draw in DRAWN_FX.items():
         files[f"fx/{name}"] = draw()
-    for f in ("tub", "blanket"):
+    for f in ("tub", "blanket", "bath_arm"):
         files[f"front/{f}"] = R[f"front:{f}"]
     # Snacks can be handed to any body, so each is drawn on its own with its
-    # own outline. Its corner is at (39, 31), by his right hand.
+    # own outline, in his fingers at the standing hand (35, 46).
     for i in ITEMS:
         files[f"prop/{i}"] = R[f"item:{i}"]
+        files[f"prop/{i}_icon"] = R[f"icon:{i}"]
 
     head_offsets = {pose: tuple(R["_lying_head"][pose]) for pose in LYING}
     shared = {"face": {}, "prop": {}}
@@ -292,12 +330,37 @@ def main():
             place("prop", body, prop, layer)
     for body in BACK:
         files[f"body/{body}"] = R[f"{body}:"]
+    # Lying with a hand free for a snack: same head and faces as the pose.
+    for pose in LYING:
+        files[f"body/{pose}_hand"] = R[f"{pose}_hand:"]
+        head_offsets[f"{pose}_hand"] = head_offsets[pose]
+        for kind in overrides:
+            if pose in overrides[kind]:
+                overrides[kind][f"{pose}_hand"] = overrides[kind][pose]
+
+    hands = R["_hands"]
+    sx, sy = hands["stand"]
+
+    def from_stand(key):
+        return (hands[key][0] - sx, hands[key][1] - sy)
+
+    hand_offsets = {"head": from_stand("bath")}  # head: sitting in the bath, arm out of the foam
+    hand_offsets.update({pose + "_hand": from_stand(pose) for pose in LYING})
+    # From the back the snack peeks out from behind him; Dracula's cape would
+    # hide it, so he holds it out past the cape (scene.c draws it in front).
+    hand_offsets.update({b: from_stand(b if b in ("bath_back", "dracula_back") else "back") for b in BACK})
+
+    for c in TAILED:
+        for back, suffix in ((False, ""), (True, "_back")):
+            files[f"fx/tail_{c}{suffix}"] = [R[f"tail:{c}:{int(back)}:{k}"] for k in range(TAIL_FRAMES)]
+            if c == "sylveon":
+                files[f"fx/ribbons_{c}{suffix}"] = [R[f"ribbons:{c}:{int(back)}:{k}"] for k in range(TAIL_FRAMES)]
 
     out = args.out
     w = Writer(out)
     for rel, layer in files.items():
         w.save(layer, rel)
-    write_manifest(out, [*FRONT, *LYING, *BACK], head_offsets, overrides)
+    write_manifest(out, [*FRONT, *LYING, *BACK, *(f"{p}_hand" for p in LYING)], head_offsets, hand_offsets, overrides)
     print(f"wrote {w.count} PNGs and sprites.toml to {out}")
 
 

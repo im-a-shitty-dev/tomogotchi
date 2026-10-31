@@ -30,3 +30,21 @@ void sprite_draw(uint16_t *buf, int stride, int w, int h,
         }
     }
 }
+
+const sprite_glyph_t *sprite_glyph(uint32_t codepoint)
+{
+    int lo = 0, hi = SPRITE_GLYPH_COUNT - 1;
+    while (lo <= hi) {
+        int mid = (lo + hi) / 2;
+        uint32_t c = sprite_glyphs[mid].codepoint;
+        if (c == codepoint) {
+            return &sprite_glyphs[mid];
+        }
+        if (c < codepoint) {
+            lo = mid + 1;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return codepoint == '?' ? NULL : sprite_glyph('?');
+}

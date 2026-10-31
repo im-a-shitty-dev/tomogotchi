@@ -393,6 +393,316 @@ static void test_peek_band_darkens_the_top(void)
     CHECK(peek[(SCENE_PEEK_ROWS - 1) * SCENE_W + x] == 0x5a4d);  // divider
 }
 
+
+// --- Speech bubble and emotes ------------------------------------------------
+
+#define FILL 0xffde  // the bubble's white, #fbfaf6 in RGB565
+
+static int fill_in_rows(const uint16_t *buf, int y0, int y1)
+{
+    int n = 0;
+    for (int y = y0; y < y1; y++) {
+        for (int x = 0; x < SCENE_W; x++) n += buf[y * SCENE_W + x] == FILL;
+    }
+    return n;
+}
+
+static void test_wrap(void)
+{
+    uint32_t cps[64];
+    scene_text_line_t lines[8];
+    // English breaks at spaces and fits the width: "three" / "horns." / "leave me."
+    int n = scene_wrap("three horns. leave me.", SCENE_BUBBLE_WRAP, cps, 64, lines, 8);
+    CHECK(n == 3);
+    for (int i = 0; i < n; i++) CHECK(lines[i].width <= SCENE_BUBBLE_WRAP);
+    CHECK(n == 3 && lines[0].start == 0 && lines[0].len == 5 && lines[2].len == 9);
+    CHECK(n == 3 && cps[lines[2].start] == 'l');  // no leading space
+
+    // UTF-8 decodes to code points, and Japanese breaks anywhere.
+    n = scene_wrap("見ないで!", SCENE_BUBBLE_WRAP, cps, 64, lines, 8);
+    CHECK(n == 1 && lines[0].len == 5 && cps[0] == 0x898b);
+    n = scene_wrap("ひとりにしてひとりにして", SCENE_BUBBLE_WRAP, cps, 64, lines, 8);
+    CHECK(n >= 2);
+    for (int i = 0; i < n; i++) CHECK(lines[i].width <= SCENE_BUBBLE_WRAP);
+
+    // Short lines stay on one line; nothing gives nothing.
+    CHECK(scene_wrap("heh.", SCENE_BUBBLE_WRAP, cps, 64, lines, 8) == 1);
+    CHECK(scene_wrap("", SCENE_BUBBLE_WRAP, cps, 64, lines, 8) == 0);
+    CHECK(scene_wrap(NULL, SCENE_BUBBLE_WRAP, cps, 64, lines, 8) == 0);
+
+    // Characters missing from the font draw as '?'.
+    CHECK(sprite_glyph(0x1f600) == sprite_glyph('?'));
+}
+
+static void test_bubble_bottom_or_top(void)
+{
+    static uint16_t buf[SCENE_W * SCENE_H];
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+
+    // Standing: the bubble sits at the bottom, over his body.
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.line = "heh.";
+    hud_frame(&s, &hud, &v, NULL, 10);
+    CHECK(s.bubble_text == v.line && !s.bubble_top);
+    scene_render(&s, buf, SCENE_W);
+    CHECK(fill_in_rows(buf, SCENE_H - 16, SCENE_H) > 50);
+    CHECK(fill_in_rows(buf, 0, 16) == 0);
+
+    // In the tub his face is low, so it goes at the top.
+    v = view(PET_MOOD_ME_TIME);
+    v.scene = PET_SCENE_BATH;
+    v.outfit = PET_OUTFIT_HIDDEN;
+    v.line = "me time.";
+    hud_frame(&s, &hud, &v, NULL, 11);
+    CHECK(s.bubble_top);
+    scene_render(&s, buf, SCENE_W);
+    CHECK(fill_in_rows(buf, 0, 16) > 50);
+
+    // Stood up out of the tub, back to you: bottom again.
+    v.outfit = PET_OUTFIT_BATH;
+    v.back = true;
+    hud_frame(&s, &hud, &v, NULL, 12);
+    CHECK(!s.bubble_top);
+
+    // Nothing to say: no bubble.
+    v.line = NULL;
+    hud_frame(&s, &hud, &v, NULL, 13);
+    CHECK(s.bubble_text == NULL);
+}
+
+static void test_long_lines_page(void)
+{
+    static uint16_t a[SCENE_W * SCENE_H], b[SCENE_W * SCENE_H];
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.line = "one two three four five six seven eight";  // more than two rows
+    hud_frame(&s, &hud, &v, NULL, 50);
+    CHECK(s.bubble_ticks == 0);
+    scene_render(&s, a, SCENE_W);
+    hud_frame(&s, &hud, &v, NULL, 50 + SCENE_PAGE_TICKS);
+    CHECK(s.bubble_ticks == SCENE_PAGE_TICKS);
+    scene_render(&s, b, SCENE_W);
+    scene_rect_t r;
+    CHECK(scene_diff(a, SCENE_W, b, SCENE_W, &r));  // turned the page
+
+    // A new line starts from its first page.
+    v.line = "heh.";
+    hud_frame(&s, &hud, &v, NULL, 80);
+    CHECK(s.bubble_ticks == 0);
+}
+
+static void test_emotes(void)
+{
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.line = "heh.";
+
+    v.face = PET_FACE_SMIRK;  // wry smile: a note
+    hud_frame(&s, &hud, &v, NULL, 0);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_EMOTE_NOTE]) >= 0);
+
+    v.item = PET_ITEM_GUMMY;  // snacks: a heart
+    hud_frame(&s, &hud, &v, NULL, 1);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_EMOTE_HEART]) >= 0);
+    v.item = PET_ITEM_NONE;
+
+    v.face = PET_FACE_ANNOYED;
+    hud_frame(&s, &hud, &v, NULL, 2);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]) >= 0);
+
+    // A blank face adds nothing next to a bubble...
+    v.face = PET_FACE_BLANK;
+    hud_frame(&s, &hud, &v, NULL, 3);
+    for (int e = SPRITE_HUD_EMOTE_VEIN; e <= SPRITE_HUD_EMOTE_ZZZ; e++) CHECK(find(&s, &sprite_hud[e]) < 0);
+    // ...unless he's sulking: then the vein.
+    v.sulking = true;
+    hud_frame(&s, &hud, &v, NULL, 4);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]) >= 0);
+
+    // Beside his head when the bubble is at the bottom; below a top bubble.
+    v = view(PET_MOOD_DEADPAN);
+    v.line = "heh.";
+    v.face = PET_FACE_SMIRK;
+    hud_frame(&s, &hud, &v, NULL, 10);
+    int i = find(&s, &sprite_hud[SPRITE_HUD_EMOTE_NOTE]);
+    CHECK(i >= 0 && s.layers[i].x == 26 + 10 - 1 && s.layers[i].y == 6 + s.head_dy - 1);
+    v = view(PET_MOOD_ME_TIME);
+    v.scene = PET_SCENE_COUCH;
+    v.outfit = PET_OUTFIT_LYING;
+    v.line = "one more chapter.";
+    v.face = PET_FACE_ANNOYED;
+    hud_frame(&s, &hud, &v, NULL, 10);
+    i = find(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]);
+    CHECK(i >= 0 && s.layers[i].x == 2 - 1 && s.layers[i].y == 26 - 1);
+}
+
+static void test_sulk_anger_mark(void)
+{
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+
+    // Sulking in his bath with full hearts still shows it, blinking.
+    pet_view_t v = view(PET_MOOD_ME_TIME);
+    v.scene = PET_SCENE_BATH;
+    v.outfit = PET_OUTFIT_HIDDEN;
+    v.face = PET_FACE_HAPPY;
+    v.happiness = PET_HAPPINESS_MAX;
+    v.sulking = true;
+    hud_frame(&s, &hud, &v, NULL, 20);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]) == 1);
+    hud_frame(&s, &hud, &v, NULL, 28);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]) == 0);
+
+    // No hearts left, not sulking (yet): shown too.
+    v = view(PET_MOOD_DEADPAN);
+    v.happiness = 0;
+    hud_frame(&s, &hud, &v, NULL, 30);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]) == 1);
+
+    // Not while he's asleep, and not when he's fine.
+    v.mood = PET_MOOD_ASLEEP;
+    hud_frame(&s, &hud, &v, NULL, 30);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]) == 0);
+    v = view(PET_MOOD_DEADPAN);
+    hud_frame(&s, &hud, &v, NULL, 30);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_EMOTE_VEIN]) == 0);
+}
+
+static void test_bubble_under_peek_strip(void)
+{
+    static uint16_t buf[SCENE_W * SCENE_H];
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_ASLEEP);
+    v.line = "zzz…";
+    scene_hud_peek(&hud, 0);
+    hud_frame(&s, &hud, &v, NULL, 10);
+    CHECK(s.bubble_top && s.band_rows == SCENE_PEEK_ROWS && s.bubble_at <= s.band_from);
+    scene_render(&s, buf, SCENE_W);
+    CHECK(fill_in_rows(buf, 0, SCENE_PEEK_ROWS - 1) == 0);  // dimmed by the strip
+    CHECK(fill_in_rows(buf, SCENE_PEEK_ROWS, 20) > 0);
+}
+
+static void test_tails_wag(void)
+{
+    scene_t s;
+    pet_view_t v = view(PET_MOOD_SPOOKY);
+    v.outfit = PET_OUTFIT_COSTUME;
+    v.costume = PET_COSTUME_PIKACHU;
+
+    // From the front the tail is behind him, ping-ponging 0,1,2,3,3,2,1,0.
+    static const int wag[8] = {0, 1, 2, 3, 3, 2, 1, 0};
+    for (uint32_t t = 0; t < 8; t++) {
+        scene_build(&s, &v, t);
+        int tail = find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU]);
+        int body = find(&s, &sprite_body[SPRITE_BODY_PIKACHU]);
+        CHECK(tail >= 0 && body > tail && s.layers[tail].frame == wag[t]);
+    }
+    // From the back it's in front.
+    v.back = true;
+    scene_build(&s, &v, 0);
+    int tail = find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU_BACK]);
+    CHECK(tail > find(&s, &sprite_body[SPRITE_BODY_PIKACHU_BACK]));
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU]) < 0);
+
+    // Twice as fast while he's saying something.
+    v.back = false;
+    v.line = "pika.";
+    scene_build(&s, &v, 1);
+    tail = find(&s, &sprite_fx[SPRITE_FX_TAIL_PIKACHU]);
+    CHECK(tail >= 0 && s.layers[tail].frame == 2);
+
+    // Sylveon's ribbons ripple in front of her, a frame every 2 ticks.
+    v = view(PET_MOOD_SPOOKY);
+    v.outfit = PET_OUTFIT_COSTUME;
+    v.costume = PET_COSTUME_SYLVEON;
+    scene_build(&s, &v, 5);
+    int rib = find(&s, &sprite_fx[SPRITE_FX_RIBBONS_SYLVEON]);
+    CHECK(rib > find(&s, &sprite_body[SPRITE_BODY_SYLVEON]) && s.layers[rib].frame == 2);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_TAIL_SYLVEON]) >= 0);
+
+    // Dinos wag too; costumes without tails, and normal clothes, don't.
+    v.costume = PET_COSTUME_TRIKE;
+    scene_build(&s, &v, 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_TAIL_TRIKE]) >= 0);
+    v.costume = PET_COSTUME_DRACULA;
+    scene_build(&s, &v, 0);
+    for (int f = SPRITE_FX_TAIL_PIKACHU; f <= SPRITE_FX_RIBBONS_SYLVEON_BACK; f++) CHECK(find(&s, &sprite_fx[f]) < 0);
+}
+
+#define SKIN 0xf6b7  // #f7d7bd in RGB565: his fingers
+
+static void test_snacks_in_his_hand(void)
+{
+    static uint16_t buf[SCENE_W * SCENE_H];
+    scene_t s;
+    // Every way he can hold one, every snack: his fingers show over it at the
+    // body's hand point (standing hand 35,46 shifted by the hand offset).
+    struct { pet_mood_t mood; pet_scene_t scene; pet_outfit_t outfit; pet_costume_t costume; sprite_body_t body; } cases[] = {
+        {PET_MOOD_DEADPAN, PET_SCENE_NONE, PET_OUTFIT_CASUAL, 0, SPRITE_BODY_CASUAL},
+        {PET_MOOD_COMMUTE, PET_SCENE_NONE, PET_OUTFIT_COAT, 0, SPRITE_BODY_COAT},
+        {PET_MOOD_NIGHT, PET_SCENE_NONE, PET_OUTFIT_PJS, 0, SPRITE_BODY_PJS},
+        {PET_MOOD_SPOOKY, PET_SCENE_NONE, PET_OUTFIT_COSTUME, PET_COSTUME_SYLVEON, SPRITE_BODY_SYLVEON},
+        {PET_MOOD_SPOOKY, PET_SCENE_NONE, PET_OUTFIT_COSTUME, PET_COSTUME_DRACULA, SPRITE_BODY_DRACULA},
+        {PET_MOOD_ME_TIME, PET_SCENE_COUCH, PET_OUTFIT_LYING, 0, SPRITE_BODY_COUCH_HAND},
+        {PET_MOOD_ME_TIME, PET_SCENE_BEACH, PET_OUTFIT_LYING, 0, SPRITE_BODY_BEACH_HAND},
+        {PET_MOOD_ME_TIME, PET_SCENE_BATH, PET_OUTFIT_HIDDEN, 0, SPRITE_BODY_HEAD},
+    };
+    for (unsigned c = 0; c < sizeof cases / sizeof cases[0]; c++) {
+        for (int item = PET_ITEM_GUMMY; item < PET_ITEM_COUNT; item++) {
+            pet_view_t v = view(cases[c].mood);
+            v.scene = cases[c].scene;
+            v.outfit = cases[c].outfit;
+            v.costume = cases[c].costume;
+            v.item = item;
+            scene_build(&s, &v, 2);  // tick 2: no bob, no Tube flicker
+            CHECK(body_layer(&s, cases[c].body) != NULL);
+            scene_render(&s, buf, SCENE_W);
+            sprite_offset_t h = sprite_hand_offset[cases[c].body];
+            int bob = s.layers[find(&s, &sprite_body[cases[c].body])].y;
+            int hx = 35 + h.x, hy = 46 + h.y + (cases[c].body == SPRITE_BODY_HEAD ? 0 : bob);
+            int skin = 0;
+            for (int y = hy; y < hy + 2; y++)
+                for (int x = hx; x < hx + 3; x++) skin += buf[y * SCENE_W + x] == SKIN;
+            if (skin != 6) fprintf(stderr, "case %u item %d: %d finger pixels\n", c, item, skin);
+            CHECK(skin == 6);
+        }
+    }
+    // Lying, he puts the manga down for it.
+    pet_view_t v = view(PET_MOOD_ME_TIME);
+    v.scene = PET_SCENE_COUCH;
+    v.outfit = PET_OUTFIT_LYING;
+    scene_build(&s, &v, 1);
+    CHECK(body_layer(&s, SPRITE_BODY_COUCH) != NULL);
+
+    // From the back it's behind him, peeking out.
+    v = view(PET_MOOD_DEADPAN);
+    v.back = true;
+    v.item = PET_ITEM_CRISPS;
+    scene_build(&s, &v, 1);
+    int snack = find(&s, sprite_prop(SPRITE_BODY_CASUAL, SPRITE_PROP_CRISPS));
+    CHECK(snack >= 0 && snack < find(&s, &sprite_body[SPRITE_BODY_CASUAL_BACK]));
+
+    // Except Dracula, whose cape would hide it: he holds it out past the cape.
+    v.mood = PET_MOOD_SPOOKY;
+    v.outfit = PET_OUTFIT_COSTUME;
+    v.costume = PET_COSTUME_DRACULA;
+    scene_build(&s, &v, 2);
+    snack = find(&s, sprite_prop(SPRITE_BODY_CASUAL, SPRITE_PROP_CRISPS));
+    CHECK(snack > find(&s, &sprite_body[SPRITE_BODY_DRACULA_BACK]));
+    scene_render(&s, buf, SCENE_W);
+    sprite_offset_t h = sprite_hand_offset[SPRITE_BODY_DRACULA_BACK];
+    CHECK(buf[(46 + h.y) * SCENE_W + 35 + h.x] == SKIN);
+}
+
 int main(void)
 {
     test_resting_faces_blink();
@@ -408,6 +718,14 @@ int main(void)
     test_pop_up_hearts();
     test_peek_strip();
     test_peek_band_darkens_the_top();
+    test_wrap();
+    test_bubble_bottom_or_top();
+    test_long_lines_page();
+    test_emotes();
+    test_sulk_anger_mark();
+    test_bubble_under_peek_strip();
+    test_tails_wag();
+    test_snacks_in_his_hand();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

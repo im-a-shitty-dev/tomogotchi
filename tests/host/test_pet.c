@@ -171,7 +171,20 @@ static void test_tap_annoys_when_grumpy_and_costs_a_heart(void)
     pet_handle_event(&pet, TAP, 100);
     pet_view_t v = pet_view(&pet);
     CHECK(v.face == PET_FACE_ANNOYED);
-    CHECK(v.happiness == PET_HAPPINESS_START - 1);
+    CHECK(v.happiness == PET_HAPPINESS_START);  // one poke is free...
+    for (int i = 1; i < PET_POKES_PER_HEART; i++) pet_handle_event(&pet, TAP, 100 + i);
+    CHECK(pet_view(&pet).happiness == PET_HAPPINESS_START - 1);  // ...every third costs a heart
+}
+
+static void test_fumbled_double_tap_in_the_bath_is_cheap(void)
+{
+    // A double-tap that comes in as two taps costs at most one heart.
+    pet_t pet = pet_at(TUE, 18, 0);  // bath by the schedule
+    pet_handle_event(&pet, TAP, 100);
+    pet_handle_event(&pet, TAP, 500);
+    CHECK(pet_view(&pet).happiness == PET_HAPPINESS_START);
+    pet_handle_event(&pet, TAP, 900);
+    CHECK(pet_view(&pet).happiness == PET_HAPPINESS_START - 1);
 }
 
 static void test_shake_makes_him_dizzy(void)
@@ -393,17 +406,32 @@ static void test_sulk_ends_after_food_and_a_quiet_bath(void)
     CHECK(v.sulking && !v.back);
     CHECK(v.mood == PET_MOOD_ME_TIME && v.scene == PET_SCENE_BATH);
 
-    // Poking him in the bath starts the clock again.
+    // Poking him in the bath makes him wait a minute longer.
     uint32_t poked = 3000 + PET_SULK_BATH_MS - 1000;
     tick(&pet, TUE, 12, 0, poked - 1);
     pet_handle_event(&pet, TAP, poked);
     tick(&pet, TUE, 12, 0, 3000 + PET_SULK_BATH_MS);
     CHECK(pet_view(&pet).sulking);
+    tick(&pet, TUE, 12, 0, 3000 + PET_SULK_BATH_MS + PET_SULK_POKE_MS - 1);
+    CHECK(pet_view(&pet).sulking);
 
-    CHECK(tick(&pet, TUE, 12, 0, poked + PET_SULK_BATH_MS));
+    CHECK(tick(&pet, TUE, 12, 0, 3000 + PET_SULK_BATH_MS + PET_SULK_POKE_MS));
     v = pet_view(&pet);
     CHECK(!v.sulking && !v.back && v.mood == PET_MOOD_DEADPAN);
     CHECK(v.line != NULL);  // forgives you
+}
+
+static void test_pokes_in_the_sulk_bath_add_up_but_never_past_a_full_wait(void)
+{
+    pet_t pet = sulking_pet();
+    for (int i = 0; i < PET_SULK_FED; i++) pet_handle_event(&pet, give(PET_ITEM_GUMMY), 1000 + i);
+    CHECK(pet.sulk_bathing);
+    // Lots of pokes straight away: still just one full wait from now.
+    for (int i = 0; i < 20; i++) pet_handle_event(&pet, i % 2 ? SHAKE : TAP, 2000 + i);
+    tick(&pet, TUE, 12, 0, 2019 + PET_SULK_BATH_MS - 1);
+    CHECK(pet_view(&pet).sulking);
+    tick(&pet, TUE, 12, 0, 2019 + PET_SULK_BATH_MS);
+    CHECK(!pet_view(&pet).sulking);
 }
 
 static void test_no_sulk_from_sleepy_pokes(void)
@@ -500,6 +528,29 @@ static void test_swipe_up_in_scheduled_me_time_moves_on(void)
     pet_t pet = pet_at(TUE, 18, 0);  // bath by the schedule
     pet_handle_event(&pet, SWIPE_UP, 100);
     CHECK(pet_view(&pet).scene == PET_SCENE_COUCH);
+    pet_handle_event(&pet, SWIPE_UP, 200);
+    CHECK(pet_view(&pet).scene == PET_SCENE_BEACH);
+    pet_handle_event(&pet, SWIPE_UP, 300);  // back to the schedule: bath
+    CHECK(pet_view(&pet).scene == PET_SCENE_BATH && pet.chosen_scene == PET_SCENE_NONE);
+}
+
+static void test_swipe_up_reaches_the_bath_on_a_lazy_sunday(void)
+{
+    // Sunday afternoon is couch me-time. It used to bounce couch, beach,
+    // couch, beach and never reach the bath.
+    pet_t pet = pet_at(SUN, 14, 0);
+    CHECK(pet_view(&pet).scene == PET_SCENE_COUCH);
+    pet_handle_event(&pet, SWIPE_UP, 100);
+    CHECK(pet_view(&pet).scene == PET_SCENE_BATH);
+    pet_handle_event(&pet, SWIPE_UP, 200);
+    CHECK(pet_view(&pet).scene == PET_SCENE_COUCH);  // picked, not scheduled
+    CHECK(pet.chosen_scene == PET_SCENE_COUCH);
+    pet_handle_event(&pet, SWIPE_UP, 300);
+    CHECK(pet_view(&pet).scene == PET_SCENE_BEACH);
+    pet_handle_event(&pet, SWIPE_UP, 400);
+    CHECK(pet_view(&pet).scene == PET_SCENE_COUCH && pet.chosen_scene == PET_SCENE_NONE);
+    pet_handle_event(&pet, SWIPE_UP, 500);
+    CHECK(pet_view(&pet).scene == PET_SCENE_BATH);
 }
 
 static void test_swipe_up_takes_the_costume_off(void)
@@ -696,6 +747,7 @@ int main(void)
     test_view_per_mood();
     test_tap_smirks_when_deadpan();
     test_tap_annoys_when_grumpy_and_costs_a_heart();
+    test_fumbled_double_tap_in_the_bath_is_cheap();
     test_shake_makes_him_dizzy();
     test_reaction_wears_off();
     test_reaction_survives_clock_wrap();
@@ -716,6 +768,7 @@ int main(void)
     test_interaction_resets_decay();
     test_zero_happiness_and_he_sulks();
     test_sulk_ends_after_food_and_a_quiet_bath();
+    test_pokes_in_the_sulk_bath_add_up_but_never_past_a_full_wait();
     test_no_sulk_from_sleepy_pokes();
     test_swipe_dresses_him_up_any_time();
     test_swiping_through_every_costume();
@@ -724,6 +777,7 @@ int main(void)
     test_no_dressing_up_while_asleep();
     test_swipe_up_cycles_scenes_then_back_to_schedule();
     test_swipe_up_in_scheduled_me_time_moves_on();
+    test_swipe_up_reaches_the_bath_on_a_lazy_sunday();
     test_swipe_up_takes_the_costume_off();
     test_chosen_scene_lasts_until_bed();
     test_no_scene_swipe_while_asleep_or_sulking();
