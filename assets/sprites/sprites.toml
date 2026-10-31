@@ -15,8 +15,8 @@ front = ["tub", "blanket"]
 # Faces and props are drawn at the body's head offset. Bodies not listed
 # use [0, 0]. Lying poses have the head further left and lower.
 [head_offset]
-couch = [-11, 8]
-beach = [-11, 1]
+couch = [-12, 7]
+beach = [-11, 3]
 
 # Bodies that need their own face or prop art (masks, hoods over the
 # cheeks). The value is a PNG under face/ or prop/ without .png, or "" to

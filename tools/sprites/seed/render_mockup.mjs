@@ -27,11 +27,12 @@ const M = new Function(code)();
 const P = M.P;
 
 // Lying poses, as set up in the mockup's frame(). Keep in sync with it.
+// ox shifts the whole pose sideways (the mockup's drawLying has none built in).
 const LYING = {
-  couch: { by: 43, top: P.tee, topS: P.teeS, shorts: P.shorts, shortsS: P.shortsS, hold: 'manga' },
-  beach: { by: 36, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
+  couch: { by: 42, ox: -1, top: P.tee, topS: P.teeS, shorts: P.shorts, shortsS: P.shortsS, hold: 'manga' },
+  beach: { by: 38, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
 };
-const LYING_HEAD = (ly) => [-11, ly.by - 35];
+const LYING_HEAD = (ly) => [-11 + (ly.ox || 0), ly.by - 35];
 
 function render(req) {
   const L = new M.Layer();
@@ -46,11 +47,16 @@ function render(req) {
     }
     case 'tomo': M.drawTomo(L, req.opts); L.outline(P.OL); break;
     case 'lying': {
-      const ly = LYING[req.pose], [hx, hy] = LYING_HEAD(ly);
+      const ly = LYING[req.pose], [hx, hy] = LYING_HEAD(ly), ox = ly.ox || 0;
       M.drawLying(L, ly, 'body');
-      M.drawTomo(L, { ox: hx, oy: hy, face: req.face, item: req.item, noBody: true });
+      M.drawTomo(L, { ox: hx - ox, oy: hy, face: req.face, item: req.item, noBody: true });
       if (!req.item) M.drawLying(L, ly, 'hold');
       L.outline(P.OL);
+      if (ox) {  // slide everything sideways
+        const a = L.a.slice();
+        L.a.fill(null);
+        for (let i = 0; i < a.length; i++) if (a[i]) L.px(i % M.W + ox, Math.floor(i / M.W), a[i]);
+      }
       break;
     }
     // Free-moving bits the mockup draws inline in frame(). Copied from there;
