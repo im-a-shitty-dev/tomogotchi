@@ -23,6 +23,17 @@ jobs:
       - run: cmake --build build/host
       - run: ctest --test-dir build/host --output-on-failure
 
+  sprites:
+    name: Sprites (generated C matches PNGs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "pillow>=10"
+      - run: python tools/sprites/build.py --check
+
   firmware:
     name: Firmware (ESP-IDF v5.5)
     runs-on: ubuntu-latest

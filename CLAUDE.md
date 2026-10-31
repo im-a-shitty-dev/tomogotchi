@@ -21,3 +21,5 @@ Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/age
 - Firmware is ESP-IDF (v5.5+) + LVGL 9 in C, using Waveshare's board package. See `docs/adr/0001-esp-idf-and-lvgl.md`.
 - The ESP32-C6 has no PSRAM: never allocate a full 368x448 frame. Art is drawn on a 52x64 canvas scaled 7x.
 - Keep `firmware/components/pet` free of ESP-IDF/hardware includes so `tests/host` can build it. Run the host tests after changing it.
+- Art lives in `assets/sprites/` as PNGs. After changing them run `python tools/sprites/build.py` and commit the generated C too; CI checks it. See `assets/sprites/README.md` and `docs/adr/0002-sprite-pipeline.md`.
+- Keep `firmware/components/sprites` hardware-free too; its tests are in `tests/host`.

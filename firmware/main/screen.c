@@ -3,6 +3,7 @@
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
 #include "lvgl.h"
+#include "sprites_gen.h"
 
 static const char *TAG = "screen";
 
@@ -52,70 +53,85 @@ esp_err_t screen_start(QueueHandle_t events)
     return ESP_OK;
 }
 
-// --- Placeholder face -------------------------------------------------------
-// Stand-in art until real sprites arrive from the character design work.
+// --- Drawing ----------------------------------------------------------------
+// Each frame is layered from the generated sprites (see assets/sprites):
+// background, body, face and props at the body's head offset, front layer.
 
-static void px(int x, int y, lv_color_t c)
+typedef struct {
+    sprite_bg_t bg;
+    int fx;  // sprite_fx_t, or -1 for none
+    sprite_body_t body;
+    sprite_face_t face;
+    int props[2];  // sprite_prop_t, -1 for none
+    int front;     // sprite_front_t, -1 for none
+    int dx, dy;    // whole-character offset
+} scene_t;
+
+static bool is_cute(sprite_body_t body)
 {
-    if (x >= 0 && x < SCREEN_ART_W && y >= 0 && y < SCREEN_ART_H) {
-        lv_canvas_set_px(s_canvas, x, y, c, LV_OPA_COVER);
-    }
+    return body == SPRITE_BODY_CHIIKAWA || body == SPRITE_BODY_PIKACHU || body == SPRITE_BODY_SYLVEON ||
+           body == SPRITE_BODY_TREX || body == SPRITE_BODY_TRIKE;
 }
 
-static void rect(int x, int y, int w, int h, lv_color_t c)
+static scene_t scene_for(const pet_t *pet)
 {
-    for (int j = 0; j < h; j++) {
-        for (int i = 0; i < w; i++) {
-            px(x + i, y + j, c);
-        }
-    }
-}
-
-static void draw_face(const pet_t *pet)
-{
-    const lv_color_t skin = lv_color_hex(0xF2D3B3);
-    const lv_color_t hair = lv_color_hex(0x1A1A22);
-    const lv_color_t ink = lv_color_hex(0x2B1E1E);
-    const lv_color_t blush = lv_color_hex(0xE88A8A);
-
-    // Head and mullet.
-    rect(12, 14, 28, 28, skin);
-    rect(10, 10, 32, 8, hair);
-    rect(10, 18, 4, 26, hair);
-    rect(38, 18, 4, 26, hair);
-
-    // Eyes: half-lidded when grumpy or annoyed, flat lines otherwise.
-    bool lidded = pet->mood == PET_MOOD_GRUMPY || pet->reaction == PET_REACTION_ANNOYED;
-    if (pet->reaction == PET_REACTION_DIZZY) {
-        rect(17, 24, 1, 1, ink); rect(19, 24, 1, 1, ink); rect(18, 25, 1, 1, ink);
-        rect(17, 26, 1, 1, ink); rect(19, 26, 1, 1, ink);
-        rect(32, 24, 1, 1, ink); rect(34, 24, 1, 1, ink); rect(33, 25, 1, 1, ink);
-        rect(32, 26, 1, 1, ink); rect(34, 26, 1, 1, ink);
-    } else {
-        rect(17, 25, 4, lidded ? 1 : 2, ink);
-        rect(31, 25, 4, lidded ? 1 : 2, ink);
-    }
-
-    // Mouth.
-    switch (pet->reaction) {
-    case PET_REACTION_SMIRK:
-        rect(24, 34, 5, 1, ink);
-        px(29, 33, ink);
-        rect(15, 30, 3, 1, blush);
-        rect(34, 30, 3, 1, blush);
+    scene_t s = {SPRITE_BG_DEADPAN, -1, SPRITE_BODY_CASUAL, SPRITE_FACE_BLANK, {-1, -1}, -1, 0, 0};
+    switch (pet->mood) {
+    case PET_MOOD_GRUMPY:
+        s.bg = SPRITE_BG_MORNING;
+        s.face = SPRITE_FACE_GRUMPY;
+        s.props[0] = SPRITE_PROP_BEDHEAD;
+        s.props[1] = SPRITE_PROP_CUP;
         break;
-    case PET_REACTION_ANNOYED:
-        rect(23, 35, 6, 1, ink);
-        px(22, 36, ink);
-        px(29, 36, ink);
+    case PET_MOOD_SPOOKY:
+        // Each poke swaps the costume, as in the mockup.
+        s.bg = SPRITE_BG_SPOOKY;
+        s.fx = SPRITE_FX_STARS;
+        s.body = SPRITE_BODY_DRACULA + pet->pokes % (SPRITE_BODY_SYLVEON - SPRITE_BODY_DRACULA + 1);
         break;
-    case PET_REACTION_DIZZY:
-        rect(24, 34, 4, 3, ink);
+    case PET_MOOD_ME_TIME:
+        s.bg = SPRITE_BG_BATH;
+        s.body = SPRITE_BODY_HEAD;
+        s.face = SPRITE_FACE_HAPPY;
+        s.front = SPRITE_FRONT_TUB;
+        s.dy = 7;
         break;
     default:
-        rect(24, 35, 4, 1, ink);
+        s.props[0] = SPRITE_PROP_PHONE;
         break;
     }
+    switch (pet->reaction) {
+    case PET_REACTION_SMIRK:
+        s.face = pet->mood == PET_MOOD_SPOOKY && !is_cute(s.body) ? SPRITE_FACE_FANG : SPRITE_FACE_SMIRK;
+        break;
+    case PET_REACTION_ANNOYED:
+        s.face = SPRITE_FACE_ANNOYED;
+        break;
+    case PET_REACTION_DIZZY:
+        s.face = SPRITE_FACE_DIZZY;
+        break;
+    default:
+        break;
+    }
+    return s;
+}
+
+static void draw_scene(const scene_t *s, unsigned frame)
+{
+    uint16_t *buf = (uint16_t *)s_canvas_buf.data;
+    int stride = s_canvas_buf.header.stride / sizeof(uint16_t);
+#define DRAW(sprite, x, y) sprite_draw(buf, stride, SCREEN_ART_W, SCREEN_ART_H, (sprite), frame, (x), (y))
+
+    DRAW(&sprite_bg[s->bg], 0, 0);
+    if (s->fx >= 0) DRAW(&sprite_fx[s->fx], 0, 0);
+    DRAW(&sprite_body[s->body], s->dx, s->dy);
+    int hx = s->dx + sprite_head_offset[s->body].x, hy = s->dy + sprite_head_offset[s->body].y;
+    DRAW(sprite_face(s->body, s->face), hx, hy);
+    for (int i = 0; i < 2; i++) {
+        if (s->props[i] >= 0) DRAW(sprite_prop(s->body, s->props[i]), hx, hy);
+    }
+    if (s->front >= 0) DRAW(&sprite_front[s->front], 0, 0);
+#undef DRAW
 }
 
 void screen_draw(const pet_t *pet)
@@ -124,8 +140,8 @@ void screen_draw(const pet_t *pet)
         ESP_LOGW(TAG, "display busy, skipping frame");
         return;
     }
-    lv_canvas_fill_bg(s_canvas, lv_color_black(), LV_OPA_COVER);
-    draw_face(pet);
+    scene_t s = scene_for(pet);
+    draw_scene(&s, 0);  // TODO: tick animation frames, blinks and bobbing
     lv_obj_invalidate(s_canvas);
     bsp_display_unlock();
 }

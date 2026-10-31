@@ -10,7 +10,10 @@ board. A little pixel-art Tomo lives on the screen and reacts to taps and shakes
 firmware/                ESP-IDF project
   main/                  app: entry point, screen, motion sensing
   components/pet/        pet logic (plain C, no hardware calls)
-tests/host/              unit tests for the pet logic, run on your computer
+  components/sprites/    sprite drawing + generated sprite data
+assets/sprites/          the pixel art, as PNGs (see assets/sprites/README.md)
+tools/sprites/           PNG -> C converter, preview, mockup seeding
+tests/host/              unit tests for the pet logic and sprites, run on your computer
 docs/adr/                architecture decisions
 ```
 
@@ -36,4 +39,15 @@ cmake --build build/host
 ctest --test-dir build/host --output-on-failure
 ```
 
-CI runs both the host tests and a firmware build on every push.
+## Sprites
+
+After changing anything in `assets/sprites/`, regenerate the C:
+
+```sh
+pip install pillow
+python tools/sprites/build.py
+python tools/sprites/preview.py   # optional: contact sheet in build/sprites-preview.png
+```
+
+CI runs the host tests, checks the sprite C is up to date, and builds the
+firmware on every push.
