@@ -150,7 +150,9 @@ static void invalidate_art(const scene_rect_t *r)
         .x2 = ox + (r->x + r->w) * SCREEN_ART_SCALE - 1,
         .y2 = oy + (r->y + r->h) * SCREEN_ART_SCALE - 1,
     };
-    lv_inv_area(lv_obj_get_display(s_canvas), &a);
+    // Invalidate on the screen, not the canvas: the canvas object's own box is
+    // the unscaled 52x64, which would clip the area.
+    lv_obj_invalidate_area(lv_obj_get_screen(s_canvas), &a);
 }
 
 // The snack picker: gummy, crisps and coffee across the bottom third.
