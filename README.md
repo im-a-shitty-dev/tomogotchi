@@ -11,9 +11,10 @@ firmware/                ESP-IDF project
   main/                  app: entry point, screen, motion sensing
   components/pet/        pet logic (plain C, no hardware calls)
   components/sprites/    sprite drawing + generated sprite data
+  components/scene/      what to draw for the pet at each animation tick
 assets/sprites/          the pixel art, as PNGs (see assets/sprites/README.md)
 tools/sprites/           PNG -> C converter, preview, mockup seeding
-tests/host/              unit tests for the pet logic and sprites, run on your computer
+tests/host/              unit tests for the pet logic, sprites and scenes, run on your computer
 docs/adr/                architecture decisions
 ```
 
@@ -47,6 +48,8 @@ After changing anything in `assets/sprites/`, regenerate the C:
 pip install pillow
 python tools/sprites/build.py
 python tools/sprites/preview.py   # optional: contact sheet in build/sprites-preview.png
+python tools/sprites/animate.py   # optional: animated GIF from the real scene code
+                                  # (build the host tests first)
 ```
 
 CI runs the host tests, checks the sprite C is up to date, and builds the

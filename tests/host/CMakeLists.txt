@@ -19,3 +19,13 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../firmware/components/sprites s
 add_executable(test_sprites test_sprites.c)
 target_link_libraries(test_sprites PRIVATE sprites)
 add_test(NAME sprites COMMAND test_sprites)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../firmware/components/scene scene)
+
+add_executable(test_scene test_scene.c)
+target_link_libraries(test_scene PRIVATE scene)
+add_test(NAME scene COMMAND test_scene)
+
+# Not a test: dumps animation frames for tools/sprites/animate.py.
+add_executable(scene_dump scene_dump.c)
+target_link_libraries(scene_dump PRIVATE scene)

@@ -53,6 +53,35 @@ function render(req) {
       L.outline(P.OL);
       break;
     }
+    // Free-moving bits the mockup draws inline in frame(). Copied from there;
+    // keep in sync. Each is drawn on an empty layer, without outline.
+    case 'steam': {
+      const t = req.t;
+      for (const [x, ph] of [[10, 0], [19, 7], [34, 3]]) { const s = (t + ph * 3) % 20; if (s < 13) L.px(x + (s % 6 < 3 ? 0 : 1), 36 - s, '#4f7f87'); }
+      break;
+    }
+    case 'zzz': {
+      const t = req.t;
+      for (let i = 0; i < 3; i++) {
+        const s = (t + i * 10) % 30; if (s > 22) continue;
+        const zx = 37 + i * 3 + Math.floor(s / 8), zy = 16 - Math.floor(s / 2), c = s > 16 ? '#5a5f80' : '#b9c2e8';
+        L.rect(zx, zy, 4, 1, c); L.px(zx + 2, zy + 1, c); L.px(zx + 1, zy + 2, c); L.rect(zx, zy + 3, 4, 1, c);
+      }
+      break;
+    }
+    case 'bat': {
+      // One bat crossing the sky (the mockup's first bat, without its bob).
+      const t = req.t, bx = (t % 66) - 7, by = 7;
+      const wy = by + (t % 4 < 2 ? -1 : 1), c = '#05030a';
+      L.px(bx, by, c); L.px(bx, by + 1, c);
+      [-2, -1, 1, 2].forEach(dx => L.px(bx + dx, wy, c));
+      break;
+    }
+    case 'splash': {
+      // Drops flicking out of the tub when he's shaken.
+      for (const [x, y] of [[2, 37], [3, 35], [49, 36], [48, 34], [10, 35], [41, 34]]) L.px(x, y - (req.t % 2), '#9fd8ff');
+      break;
+    }
     case 'item': M.drawItem(L, req.item, 0, 0); L.outline(P.OL); break;
     case 'tub': M.drawTub(L, 0, false, false); L.outline(P.OL); break;
     case 'blanket': M.drawBlanket(L); L.outline(P.OL); break;

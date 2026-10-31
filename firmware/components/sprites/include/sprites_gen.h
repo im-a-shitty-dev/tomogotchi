@@ -90,10 +90,14 @@ typedef enum {
     SPRITE_FX_WAVES,
     SPRITE_FX_TUNNEL,
     SPRITE_FX_STARS,
+    SPRITE_FX_STEAM,
+    SPRITE_FX_ZZZ,
+    SPRITE_FX_BAT,
+    SPRITE_FX_SPLASH,
     SPRITE_FX_COUNT
 } sprite_fx_t;
 
-#define SPRITE_PALETTE_SIZE 160
+#define SPRITE_PALETTE_SIZE 165
 extern const uint16_t sprite_palette[SPRITE_PALETTE_SIZE];
 
 extern const sprite_t sprite_bg[SPRITE_BG_COUNT > 0 ? SPRITE_BG_COUNT : 1];
