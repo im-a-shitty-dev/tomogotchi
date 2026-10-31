@@ -26,7 +26,7 @@ void wake_tap(wake_t *w, uint32_t now_ms)
 
 void wake_button(wake_t *w, uint32_t now_ms)
 {
-    if (w->on && !w->charging) {
+    if (w->on) {
         w->on = false;
     } else {
         turn_on(w, now_ms);
@@ -44,9 +44,8 @@ void wake_set_charging(wake_t *w, bool charging, uint32_t now_ms)
 
 bool wake_update(wake_t *w, uint32_t now_ms)
 {
-    if (w->charging) {
-        w->on = true;
-    } else if (w->on && now_ms - w->last_activity_ms >= WAKE_TIMEOUT_MS) {
+    uint32_t timeout = w->charging ? WAKE_CHARGING_TIMEOUT_MS : WAKE_TIMEOUT_MS;
+    if (w->on && now_ms - w->last_activity_ms >= timeout) {
         w->on = false;
     }
     return w->on;
