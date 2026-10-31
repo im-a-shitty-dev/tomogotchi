@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=5.5"
+  # Waveshare's board package: screen, touch, I2C bus and LVGL setup.
+  waveshare/esp32_c6_touch_amoled_1_8:
+    version: "^1.0.0"
+  # Motion sensor driver.
+  waveshare/qmi8658:
+    version: "^2.0.0"
