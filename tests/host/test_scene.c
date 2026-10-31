@@ -690,6 +690,17 @@ static void test_snacks_in_his_hand(void)
     scene_build(&s, &v, 1);
     int snack = find(&s, sprite_prop(SPRITE_BODY_CASUAL, SPRITE_PROP_CRISPS));
     CHECK(snack >= 0 && snack < find(&s, &sprite_body[SPRITE_BODY_CASUAL_BACK]));
+
+    // Except Dracula, whose cape would hide it: he holds it out past the cape.
+    v.mood = PET_MOOD_SPOOKY;
+    v.outfit = PET_OUTFIT_COSTUME;
+    v.costume = PET_COSTUME_DRACULA;
+    scene_build(&s, &v, 2);
+    snack = find(&s, sprite_prop(SPRITE_BODY_CASUAL, SPRITE_PROP_CRISPS));
+    CHECK(snack > find(&s, &sprite_body[SPRITE_BODY_DRACULA_BACK]));
+    scene_render(&s, buf, SCENE_W);
+    sprite_offset_t h = sprite_hand_offset[SPRITE_BODY_DRACULA_BACK];
+    CHECK(buf[(46 + h.y) * SCENE_W + 35 + h.x] == SKIN);
 }
 
 int main(void)

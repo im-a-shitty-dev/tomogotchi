@@ -346,7 +346,9 @@ def main():
 
     hand_offsets = {"head": from_stand("bath")}  # head: sitting in the bath, arm out of the foam
     hand_offsets.update({pose + "_hand": from_stand(pose) for pose in LYING})
-    hand_offsets.update({b: from_stand("bath_back" if b == "bath_back" else "back") for b in BACK})
+    # From the back the snack peeks out from behind him; Dracula's cape would
+    # hide it, so he holds it out past the cape (scene.c draws it in front).
+    hand_offsets.update({b: from_stand(b if b in ("bath_back", "dracula_back") else "back") for b in BACK})
 
     for c in TAILED:
         for back, suffix in ((False, ""), (True, "_back")):

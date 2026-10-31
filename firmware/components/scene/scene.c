@@ -207,11 +207,15 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
     const sprite_t *snack_sp = snack >= 0 ? sprite_prop(SPRITE_BODY_CASUAL, snack) : NULL;
     sprite_offset_t hand = sprite_hand_offset[body];
     bool in_tub = bath && front >= 0;
+    // From the back a snack peeks out from behind him, except past
+    // Dracula's cape, which would hide it: he holds that one out in front.
+    bool snack_behind = v->back && body != SPRITE_BODY_DRACULA_BACK;
 
     if (tail >= 0 && !v->back) push(s, &sprite_fx[tail], wag_frame, dx, dy);
-    if (snack_sp && v->back) push(s, snack_sp, 0, hand.x + dx, hand.y + dy);
+    if (snack_sp && snack_behind) push(s, snack_sp, 0, hand.x + dx, hand.y + dy);
     push(s, &sprite_body[body], 0, dx, dy);
     if (tail >= 0 && v->back) push(s, &sprite_fx[tail], wag_frame, dx, dy);
+    if (snack_sp && v->back && !snack_behind) push(s, snack_sp, 0, hand.x + dx, hand.y + dy);
     int hx = dx + sprite_head_offset[body].x, hy = dy + sprite_head_offset[body].y;
     if (ribbons >= 0) push(s, &sprite_fx[ribbons], t / RIPPLE_EVERY, dx, dy);  // in front of him, behind a snack
     if (!v->back) {

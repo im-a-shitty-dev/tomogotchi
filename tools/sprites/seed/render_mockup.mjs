@@ -113,6 +113,7 @@ const out = {
   _lying_head: Object.fromEntries(Object.entries(LYING).map(([k, ly]) => [k, LYING_HEAD(ly)])),
   _hands: {
     stand: M.HAND.stand, back: M.HAND.backStand, bath_back: M.HAND.bathBack, bath: M.BATH_HAND,
+    dracula_back: M.HAND.draculaBack,
     ...Object.fromEntries(Object.entries(LYING).map(([k, ly]) => [k, lyingHand(ly)])),
   },
 };
