@@ -10,10 +10,19 @@
 
 static const char *TAG = "power";
 
+#if CONFIG_IDF_TARGET_ESP32S3
+#define BOOT_GPIO GPIO_NUM_0         // BOOT button, active low
+#else
 #define BOOT_GPIO GPIO_NUM_9         // BOOT button, active low
+#endif
 #define TAP_GPIO BSP_LCD_TOUCH_INT   // touch chip interrupt, active low
 #define BUTTON_DEBOUNCE_MS 250
 #define I2C_TIMEOUT_MS 50
+
+// The S3 board package doesn't name the power chip's address.
+#ifndef BSP_PMU_I2C_ADDRESS
+#define BSP_PMU_I2C_ADDRESS 0x34
+#endif
 
 // AXP2101 registers (see XPowersLib's AXP2101Constants.h).
 #define AXP_ADDR BSP_PMU_I2C_ADDRESS

@@ -1,6 +1,6 @@
 # tomogotchi
 
-A tamagotchi-style toy for the Waveshare 1.8" touch AMOLED ESP32-C6 board.
+A tamagotchi-style toy for the Waveshare 1.8" touch AMOLED board (ESP32-C6 and ESP32-S3 versions).
 
 ## Agent skills
 
@@ -19,7 +19,8 @@ Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/age
 ## Project notes
 
 - Firmware is ESP-IDF (v5.5+) + LVGL 9 in C, using Waveshare's board package. See `docs/adr/0001-esp-idf-and-lvgl.md`.
-- The ESP32-C6 has no PSRAM: never allocate a full 368x448 frame. Art is drawn on a 52x64 canvas scaled 7x.
+- The firmware builds for both `esp32c6` and `esp32s3` (CI builds both). Board differences go in `#if CONFIG_IDF_TARGET_ESP32S3` or `sdkconfig.defaults.<target>`.
+- The ESP32-C6 has no PSRAM: never allocate a full 368x448 frame, even though the S3 has PSRAM. Art is drawn on a 52x64 canvas scaled 7x.
 - Keep `firmware/components/pet` free of ESP-IDF/hardware includes so `tests/host` can build it. Run the host tests after changing it.
 - Art lives in `assets/sprites/` as PNGs. After changing them run `python tools/sprites/build.py` and commit the generated C too; CI checks it. See `assets/sprites/README.md` and `docs/adr/0002-sprite-pipeline.md`.
 - Keep `firmware/components/sprites` and `firmware/components/scene` hardware-free too; their tests are in `tests/host`. Animation timing lives in `scene`, not `pet`.
