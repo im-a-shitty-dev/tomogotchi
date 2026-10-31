@@ -6,11 +6,13 @@
 # List order sets the C enum values.
 
 bg = ["deadpan", "morning", "commute", "bath", "couch", "beach", "night", "asleep", "spooky"]
-fx = ["waves", "tunnel", "stars", "steam", "zzz", "bat", "splash", "foam"]
+fx = ["waves", "tunnel", "stars", "steam", "zzz", "bat", "splash", "foam", "rain", "sparkle"]
 body = ["casual", "coat", "dracula", "chiikawa", "sadako", "trex", "barrel", "pikachu", "jason", "trike", "sylveon", "pjs", "pjs_phone", "pjs_switch", "head", "couch", "beach", "casual_back", "dracula_back", "chiikawa_back", "sadako_back", "trex_back", "barrel_back", "pikachu_back", "jason_back", "trike_back", "sylveon_back", "pjs_back", "bath_back"]
 face = ["blank", "blink", "smirk", "fang", "happy", "annoyed", "grumpy", "grumpyblink", "dizzy", "sleep", "screen", "read", "shades"]
 prop = ["phone", "cup", "bedhead", "gummy", "crisps", "coffee"]
 front = ["tub", "blanket"]
+# Peek strip (clock, hearts) and pop-up hearts. Drawn by scene code at offsets.
+hud = ["digits", "colon", "heart", "heart_empty", "pop_up", "pop_down", "pop_down_beach"]
 
 # Faces and props are drawn at the body's head offset. Bodies not listed
 # use [0, 0]. Lying poses have the head further left and lower.

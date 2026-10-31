@@ -14,6 +14,9 @@ Back to front:
 3. `body/` Tomo in an outfit or pose, outline and hair included
 4. `face/` a face overlay, then `prop/` props, both at the body's head offset
 5. `front/` anything in front of him (the tub, the blanket)
+6. `hud/` the pop-up hearts and the peek strip (clock digits, colon,
+   hearts), placed by the scene code at offsets from where they sit in the
+   PNG. The strip's dark band is drawn in code.
 
 Faces and props are overlays: only the pixels that change. Most bodies share
 the same faces. Bodies whose face looks different (masks, hoods over the

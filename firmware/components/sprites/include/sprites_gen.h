@@ -95,16 +95,30 @@ typedef enum {
     SPRITE_FX_BAT,
     SPRITE_FX_SPLASH,
     SPRITE_FX_FOAM,
+    SPRITE_FX_RAIN,
+    SPRITE_FX_SPARKLE,
     SPRITE_FX_COUNT
 } sprite_fx_t;
 
-#define SPRITE_PALETTE_SIZE 167
+typedef enum {
+    SPRITE_HUD_DIGITS,
+    SPRITE_HUD_COLON,
+    SPRITE_HUD_HEART,
+    SPRITE_HUD_HEART_EMPTY,
+    SPRITE_HUD_POP_UP,
+    SPRITE_HUD_POP_DOWN,
+    SPRITE_HUD_POP_DOWN_BEACH,
+    SPRITE_HUD_COUNT
+} sprite_hud_t;
+
+#define SPRITE_PALETTE_SIZE 173
 extern const uint16_t sprite_palette[SPRITE_PALETTE_SIZE];
 
 extern const sprite_t sprite_bg[SPRITE_BG_COUNT > 0 ? SPRITE_BG_COUNT : 1];
 extern const sprite_t sprite_body[SPRITE_BODY_COUNT > 0 ? SPRITE_BODY_COUNT : 1];
 extern const sprite_t sprite_front[SPRITE_FRONT_COUNT > 0 ? SPRITE_FRONT_COUNT : 1];
 extern const sprite_t sprite_fx[SPRITE_FX_COUNT > 0 ? SPRITE_FX_COUNT : 1];
+extern const sprite_t sprite_hud[SPRITE_HUD_COUNT > 0 ? SPRITE_HUD_COUNT : 1];
 
 // Where a body's head is, relative to the standard standing pose. Draw its
 // face and props shifted by this much.

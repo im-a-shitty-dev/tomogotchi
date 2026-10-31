@@ -12,6 +12,8 @@
 #define SWAY_EVERY 40    // the train sways for 3 ticks every 40
 #define SWAY_LEN 3
 #define DIM_EVERY 150    // Tube lights dip on ticks 0, 1 and 4 of every 150
+#define PEEK_SLIDE 3     // the peek strip slides 3 px per tick, in and out
+#define PEEK_DIVIDER 0x5a4d  // #5a4a6a, the line under the peek strip
 
 // --- Mapping the pet's view to sprites ---------------------------------------
 
@@ -89,6 +91,8 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
 {
     s->count = 0;
     s->dim = false;
+    s->band_from = 0;
+    s->band_rows = 0;
 
     sprite_body_t body = body_for(v);
     sprite_bg_t bg = SPRITE_BG_DEADPAN;
@@ -177,6 +181,79 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
         else push(s, &sprite_fx[SPRITE_FX_STEAM], t, 0, 0);
     }
     if (zzz) push(s, &sprite_fx[SPRITE_FX_ZZZ], t, 0, 0);
+
+    // His mood in the scene: a rain cloud at no hearts, sparkles at full.
+    if (v->happiness <= 0 && v->mood != PET_MOOD_ASLEEP) push(s, &sprite_fx[SPRITE_FX_RAIN], t, 0, 0);
+    if (v->happiness >= PET_HAPPINESS_MAX) push(s, &sprite_fx[SPRITE_FX_SPARKLE], t, 0, 0);
+}
+
+// --- HUD ---------------------------------------------------------------------
+
+void scene_hud_init(scene_hud_t *hud)
+{
+    *hud = (scene_hud_t){.last_happiness = -1};
+}
+
+void scene_hud_peek(scene_hud_t *hud, uint32_t t)
+{
+    if (hud->peeking && t - hud->peek_tick < SCENE_PEEK_TICKS) {
+        // Already open: keep it open for another stretch, without sliding
+        // in again (unless it is still sliding in).
+        if (t - hud->peek_tick > PEEK_SLIDE) hud->peek_tick = t - PEEK_SLIDE;
+        return;
+    }
+    hud->peeking = true;
+    hud->peek_tick = t;
+}
+
+// How far the strip is pushed up off the top: -SCENE_PEEK_ROWS (hidden) to 0
+// (fully down). It slides in over the first ticks and out over the last.
+static int peek_offset(uint32_t k)
+{
+    int in = (int)k * PEEK_SLIDE - SCENE_PEEK_ROWS;
+    int out = (SCENE_PEEK_TICKS - (int)k) * PEEK_SLIDE - SCENE_PEEK_ROWS;
+    int off = in < out ? in : out;
+    return off > 0 ? 0 : off < -SCENE_PEEK_ROWS ? -SCENE_PEEK_ROWS : off;
+}
+
+void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_time_t *time, uint32_t t)
+{
+    // Pop-up heart when happiness changes. A new change restarts it.
+    if (hud->last_happiness >= 0 && v->happiness != hud->last_happiness) {
+        hud->popping = true;
+        hud->pop_up = v->happiness > hud->last_happiness;
+        hud->pop_tick = t;
+    }
+    hud->last_happiness = v->happiness;
+    if (hud->popping && t - hud->pop_tick >= SCENE_POP_TICKS) hud->popping = false;
+    if (hud->popping) {
+        uint32_t k = t - hud->pop_tick;
+        // Broken hearts are blue, but violet against the blue beach sky.
+        bool beach = v->mood == PET_MOOD_ME_TIME && v->scene == PET_SCENE_BEACH;
+        sprite_hud_t pop = hud->pop_up ? SPRITE_HUD_POP_UP : beach ? SPRITE_HUD_POP_DOWN_BEACH : SPRITE_HUD_POP_DOWN;
+        push(s, &sprite_hud[pop], 0, k % 4 >= 2 ? 1 : 0, -(int)k);  // float up, wobbling
+    }
+
+    // Peek strip: clock on the left, hearts on the right, over a dark band.
+    if (hud->peeking && t - hud->peek_tick >= SCENE_PEEK_TICKS) hud->peeking = false;
+    if (!hud->peeking) {
+        return;
+    }
+    int off = peek_offset(t - hud->peek_tick);
+    if (off <= -SCENE_PEEK_ROWS) {
+        return;
+    }
+    s->band_from = s->count;
+    s->band_rows = (uint8_t)(SCENE_PEEK_ROWS + off);
+    if (time != NULL && time->hour >= 0) {
+        static const int8_t slot[4] = {0, 4, 10, 14};  // HH:MM
+        int digits[4] = {time->hour / 10 % 10, time->hour % 10, time->minute / 10 % 10, time->minute % 10};
+        for (int i = 0; i < 4; i++) push(s, &sprite_hud[SPRITE_HUD_DIGITS], digits[i], slot[i], off);
+        if (time->second % 2 == 0) push(s, &sprite_hud[SPRITE_HUD_COLON], 0, 0, off);
+    }
+    for (int i = 0; i < PET_HAPPINESS_MAX; i++) {
+        push(s, &sprite_hud[i < v->happiness ? SPRITE_HUD_HEART : SPRITE_HUD_HEART_EMPTY], 0, i * 4, off);
+    }
 }
 
 // Darken an RGB565 pixel to about 45%, like the mockup's flicker.
@@ -189,12 +266,25 @@ static uint16_t dim565(uint16_t c)
     return (uint16_t)((r << 11) | (g << 5) | b);
 }
 
+// Darken the top rows behind the peek strip, with a divider line under it.
+static void draw_band(uint16_t *buf, int stride, int rows)
+{
+    for (int y = 0; y < rows && y < SCENE_H; y++) {
+        for (int x = 0; x < SCENE_W; x++) {
+            uint16_t *p = &buf[y * stride + x];
+            *p = y == rows - 1 ? PEEK_DIVIDER : dim565(*p);
+        }
+    }
+}
+
 void scene_render(const scene_t *s, uint16_t *buf, int stride)
 {
     for (int i = 0; i < s->count; i++) {
+        if (s->band_rows && i == s->band_from) draw_band(buf, stride, s->band_rows);
         const scene_layer_t *l = &s->layers[i];
         sprite_draw(buf, stride, SCENE_W, SCENE_H, l->sprite, l->frame, l->x, l->y);
     }
+    if (s->band_rows && s->band_from >= s->count) draw_band(buf, stride, s->band_rows);
     if (s->dim) {
         for (int y = 0; y < SCENE_H; y++) {
             for (int x = 0; x < SCENE_W; x++) {

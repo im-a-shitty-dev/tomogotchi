@@ -1,6 +1,7 @@
 #include "screen.h"
 
 #include <string.h>
+#include <time.h>
 
 #include "bsp/display.h"
 #include "bsp/esp-bsp.h"
@@ -20,6 +21,7 @@ static const char *TAG = "screen";
 static lv_obj_t *s_canvas;
 static QueueHandle_t s_events;
 static const char *s_last_line;  // to log each speech line once
+static scene_hud_t s_hud;          // pop-up hearts and the peek strip
 
 // RGB565 canvas buffer: 52 * 64 * 2 bytes, about 6.6 KB.
 LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FORMAT_RGB565);
@@ -27,14 +29,15 @@ LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FOR
 // --- Input ------------------------------------------------------------------
 // A tap waits briefly in case a second one makes it a double-tap (turn him
 // around). A long press opens the snack picker; while it is open, a tap picks
-// the item under your finger (left, middle or right third). Swipes change
-// his outfit.
+// the item under your finger (left, middle or right third). Swiping left or
+// right changes his outfit; swiping down peeks at the clock and his hearts.
 
 #define DOUBLE_TAP_MS 280
 
 static lv_timer_t *s_tap_timer;
 static bool s_tap_pending;  // a tap is waiting to see if a second one follows
 static volatile bool s_menu_open;
+static volatile bool s_peek_asked;  // swiped down; screen_draw opens the strip
 
 static void cancel_tap(void)
 {
@@ -75,17 +78,22 @@ static void on_tap(lv_event_t *e)
     lv_timer_resume(s_tap_timer);
 }
 
-// Swipe left or right to change his outfit.
+// Swipe left or right to change his outfit, or down to peek at the clock
+// and his hearts. The peek is display-only, so it doesn't go to the pet.
 static void on_gesture(lv_event_t *e)
 {
     (void)e;
     lv_indev_t *indev = lv_indev_active();
     lv_dir_t dir = lv_indev_get_gesture_dir(indev);
-    if (dir != LV_DIR_LEFT && dir != LV_DIR_RIGHT) {
+    if (dir != LV_DIR_LEFT && dir != LV_DIR_RIGHT && dir != LV_DIR_BOTTOM) {
         return;
     }
     lv_indev_wait_release(indev);  // a swipe is not also a tap
     cancel_tap();
+    if (dir == LV_DIR_BOTTOM) {
+        s_peek_asked = true;
+        return;
+    }
     post((pet_event_t){.type = PET_INPUT_SWIPE, .direction = dir == LV_DIR_LEFT ? 1 : -1});
 }
 
@@ -178,6 +186,7 @@ esp_err_t screen_start(QueueHandle_t events)
     s_tap_timer = lv_timer_create(on_single_tap, DOUBLE_TAP_MS, NULL);
     lv_timer_pause(s_tap_timer);
 
+    scene_hud_init(&s_hud);
     LV_DRAW_BUF_INIT_STATIC(s_canvas_buf);
     s_canvas = lv_canvas_create(scr);
     lv_canvas_set_draw_buf(s_canvas, &s_canvas_buf);
@@ -263,6 +272,18 @@ void screen_set_on(bool on)
 
 static uint16_t s_prev[SCREEN_ART_W * SCREEN_ART_H];
 
+// Local time for the peek clock, or hour -1 until SNTP or the RTC has set it.
+static scene_time_t clock_now(void)
+{
+    time_t t = time(NULL);
+    struct tm tm;
+    localtime_r(&t, &tm);
+    if (tm.tm_year + 1900 < 2024) {
+        return (scene_time_t){.hour = -1};
+    }
+    return (scene_time_t){.hour = tm.tm_hour, .minute = tm.tm_min, .second = tm.tm_sec};
+}
+
 // Mark art pixels `r` for redraw, in screen coordinates.
 static void invalidate_art(const scene_rect_t *r)
 {
@@ -320,8 +341,14 @@ void screen_draw(const pet_t *pet, uint32_t tick)
 
     uint16_t *buf = (uint16_t *)s_canvas_buf.data;
     int stride = s_canvas_buf.header.stride / sizeof(uint16_t);
+    if (s_peek_asked) {
+        s_peek_asked = false;
+        scene_hud_peek(&s_hud, tick);
+    }
+    scene_time_t now = clock_now();
     scene_t scene;
     scene_build(&scene, &v, tick);
+    scene_hud(&scene, &s_hud, &v, &now, tick);
     scene_render(&scene, buf, stride);
     if (v.menu_open) {
         draw_menu();
