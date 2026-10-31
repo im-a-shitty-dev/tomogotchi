@@ -12,6 +12,11 @@
 
 static const char *TAG = "motion";
 
+// The S3 board package doesn't name the IMU's address; we probe both anyway.
+#ifndef BSP_IMU_I2C_ADDRESS
+#define BSP_IMU_I2C_ADDRESS 0x6B
+#endif
+
 #define SAMPLE_PERIOD_MS 20      // 50 Hz
 #define GRAVITY_MPS2 9.81f
 #define SHAKE_THRESHOLD_MPS2 8.0f // deviation from 1 g that counts as a jolt

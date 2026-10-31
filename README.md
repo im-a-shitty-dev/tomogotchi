@@ -1,8 +1,8 @@
 # tomogotchi
 
-A tamagotchi-style toy for the Waveshare
-[ESP32-C6 Touch AMOLED 1.8](https://github.com/waveshareteam/ESP32-C6-Touch-AMOLED-1.8)
-board. A little pixel-art Tomo lives on the screen and reacts to taps and shakes.
+A tamagotchi-style toy for the Waveshare 1.8" touch AMOLED board, in either its
+[ESP32-C6](https://github.com/waveshareteam/ESP32-C6-Touch-AMOLED-1.8) or
+[ESP32-S3](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.8) version. A little pixel-art Tomo lives on the screen and reacts to taps and shakes.
 
 ## Layout
 
@@ -22,12 +22,21 @@ docs/adr/                architecture decisions
 
 Needs [ESP-IDF v5.5+](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/get-started/linux-macos-setup.html).
 
+The board comes with an ESP32-C6 or an ESP32-S3 chip. Pick the target that
+matches yours; each gets its own build folder (and its own `sdkconfig` inside it):
+
 ```sh
 . ~/esp/esp-idf/export.sh        # wherever ESP-IDF is installed
 cd firmware
-idf.py set-target esp32c6        # first time only
-idf.py -p /dev/ttyACM0 build flash monitor
+# ESP32-C6 board
+idf.py -B build-esp32c6 -DIDF_TARGET=esp32c6 -p /dev/ttyACM0 flash monitor
+# ESP32-S3 board
+idf.py -B build-esp32s3 -DIDF_TARGET=esp32s3 -p /dev/ttyACM0 flash monitor
 ```
+
+Per-chip settings live in `sdkconfig.defaults.esp32c6` / `.esp32s3`. After
+changing any `sdkconfig.defaults*` file, delete that build folder so it's
+picked up.
 
 The first build downloads the Waveshare board package and LVGL into
 `firmware/managed_components/`.

@@ -1,8 +1,16 @@
 dependencies:
   idf: ">=5.5"
   # Waveshare's board package: screen, touch, I2C bus and LVGL setup.
+  # The same board comes with an ESP32-C6 or an ESP32-S3; the build target
+  # picks the package (idf.py -DIDF_TARGET=esp32c6 or esp32s3).
   waveshare/esp32_c6_touch_amoled_1_8:
     version: "^1.0.0"
+    rules:
+      - if: "target == esp32c6"
+  waveshare/esp32_s3_touch_amoled_1_8:
+    version: "^2.0.3"
+    rules:
+      - if: "target == esp32s3"
   # Motion sensor driver.
   waveshare/qmi8658:
     version: "^2.0.0"
