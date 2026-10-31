@@ -1,0 +1,36 @@
+# Every sprite the firmware knows about. tools/sprites/build.py turns this
+# and the PNGs into firmware/components/sprites/sprites_gen.{c,h}.
+#
+# Each name is a PNG at <group>/<name>.png, drawn on the 52x64 canvas.
+# A PNG N*52 pixels wide is an N-frame animation strip.
+# List order sets the C enum values.
+
+bg = ["deadpan", "morning", "commute", "bath", "couch", "beach", "night", "asleep", "spooky"]
+fx = ["waves", "tunnel", "stars"]
+body = ["casual", "coat", "dracula", "chiikawa", "sadako", "trex", "barrel", "pikachu", "jason", "trike", "sylveon", "pjs", "pjs_phone", "pjs_switch", "head", "couch", "beach", "casual_back", "dracula_back", "chiikawa_back", "sadako_back", "trex_back", "barrel_back", "pikachu_back", "jason_back", "trike_back", "sylveon_back", "pjs_back", "bath_back"]
+face = ["blank", "blink", "smirk", "fang", "happy", "annoyed", "grumpy", "grumpyblink", "dizzy", "sleep", "screen", "read", "shades"]
+prop = ["phone", "cup", "bedhead", "gummy", "crisps", "coffee"]
+front = ["tub", "blanket"]
+
+# Faces and props are drawn at the body's head offset. Bodies not listed
+# use [0, 0]. Lying poses have the head further left and lower.
+[head_offset]
+couch = [-11, 8]
+beach = [-11, 6]
+
+# Bodies that need their own face or prop art (masks, hoods over the
+# cheeks). The value is a PNG under face/ or prop/ without .png, or "" to
+# draw nothing. Anything not listed uses face/<face>.png or prop/<prop>.png.
+
+[face_override]
+chiikawa = { blank = "", blink = "chiikawa/blink", smirk = "chiikawa/smirk", fang = "chiikawa/smirk", happy = "chiikawa/smirk", annoyed = "", grumpy = "", grumpyblink = "", dizzy = "", sleep = "chiikawa/sleep", screen = "", read = "", shades = "chiikawa/smirk" }
+sadako = { blank = "", blink = "sadako/blink", smirk = "", fang = "", happy = "", annoyed = "", grumpy = "", grumpyblink = "", dizzy = "", sleep = "", screen = "", read = "", shades = "" }
+trex = { annoyed = "trex/annoyed" }
+barrel = { blank = "", blink = "barrel/blink", smirk = "barrel/smirk", fang = "barrel/smirk", happy = "barrel/smirk", annoyed = "barrel/annoyed", grumpy = "", grumpyblink = "", dizzy = "", sleep = "barrel/sleep", screen = "", read = "", shades = "barrel/smirk" }
+pikachu = { smirk = "pikachu/smirk", fang = "pikachu/fang", happy = "pikachu/happy", annoyed = "pikachu/annoyed", sleep = "pikachu/sleep", shades = "pikachu/shades" }
+jason = { blank = "", blink = "jason/blink", smirk = "jason/smirk", fang = "jason/smirk", happy = "jason/smirk", annoyed = "jason/annoyed", grumpy = "", grumpyblink = "", dizzy = "jason/blink", sleep = "jason/smirk", screen = "", read = "", shades = "jason/smirk" }
+trike = { annoyed = "trike/annoyed" }
+sylveon = { annoyed = "sylveon/annoyed" }
+couch = { annoyed = "couch/annoyed" }
+
+[prop_override]
