@@ -9,7 +9,8 @@ firmware scales 7x to the screen. The PNGs are the source of truth:
 Back to front:
 
 1. `bg/` a full-screen background
-2. `fx/` the animated parts of that background (waves, tunnel lights), if any
+2. `fx/` animated strips: background bits (waves, tunnel lights, stars), and
+   loose bits the scene code places (bats, steam, Zs, bath splash)
 3. `body/` Tomo in an outfit or pose, outline and hair included
 4. `face/` a face overlay, then `prop/` props, both at the body's head offset
 5. `front/` anything in front of him (the tub, the blanket)
@@ -37,7 +38,10 @@ cheeks) get their own under `face/<body>/`, listed in `sprites.toml`.
    the generated C together. CI fails if they don't match.
 
 `python tools/sprites/preview.py` writes a contact sheet of every scene to
-`build/sprites-preview.png`, handy for checking edits.
+`build/sprites-preview.png`, handy for checking edits. For animation, build the
+host tests and run `python tools/sprites/animate.py`: it renders a GIF with the
+firmware's own scene code (`firmware/components/scene`), which decides which
+frame of each strip shows at each tick.
 
 ## Where the first art came from
 

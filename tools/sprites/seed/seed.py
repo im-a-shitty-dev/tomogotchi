@@ -5,7 +5,7 @@ This runs that code (via render_mockup.mjs, needs Node) and splits the renders
 into the layers the firmware composites, then writes assets/sprites/:
 
     bg/<name>.png          full-screen backgrounds
-    fx/<name>.png          animated parts of a background, as frame strips
+    fx/<name>.png          animated bits (waves, Zs, bats...), as frame strips
     body/<body>.png        Tomo in an outfit or pose, outline and hair baked in
     face/<face>.png        face overlay, shared by most bodies
     face/<body>/<face>.png face overlay where a body needs its own (masks)
@@ -18,9 +18,10 @@ differ between the body with that face and the body with no face drawn, so
 body + face + prop composites match the mockup pixel for pixel. The script
 checks that before writing anything.
 
-Re-running it overwrites every PNG, so once someone edits the PNGs by hand,
-add new art by hand too (or seed into a scratch folder with --out and copy
-over what you need).
+Re-running it overwrites every PNG it makes, so once someone edits the PNGs
+by hand, add new art by hand too (or seed into a scratch folder with --out and
+copy over what you need). It doesn't delete PNGs it no longer makes; build.py
+flags those as unlisted.
 
     python tools/sprites/seed/seed.py path/to/tomo-moods.html [--out DIR]
 """
@@ -32,6 +33,8 @@ import tempfile
 from pathlib import Path
 
 from PIL import Image
+
+import foam
 
 W, H = 52, 64
 HERE = Path(__file__).resolve().parent
@@ -62,6 +65,16 @@ FX = {
     "tunnel": ("commute", range(40)),  # lights streak past, window tops flicker
     "stars": ("spooky", range(20)),    # twinkle
 }
+# Free-moving bits drawn in code in the mockup, cut as strips: (kind, ticks).
+# The firmware decides where in the stack they go.
+LOOSE_FX = {
+    "steam": ("steam", range(20)),   # over the tub
+    "zzz": ("zzz", range(30)),       # over the blanket
+    "bat": ("bat", range(66)),       # one bat crossing the sky; drawn twice
+    "splash": ("splash", range(2)),  # shaken in the bath
+}
+# New art drawn by code here rather than cut from the mockup.
+DRAWN_FX = {"foam": foam.frames}  # bubbles overflowing the tub
 
 # Front-facing bodies, as drawTomo options.
 FRONT = {
@@ -166,7 +179,7 @@ def write_manifest(out: Path, bodies, head_offsets, overrides):
         "# List order sets the C enum values.",
         "",
         "bg = " + names(BACKGROUNDS),
-        "fx = " + names(FX),
+        "fx = " + names([*FX, *LOOSE_FX, *DRAWN_FX]),
         "body = " + names(bodies),
         "face = " + names(FACES),
         "prop = " + names(PROPS),
@@ -203,6 +216,8 @@ def main():
         mood, scene = BACKGROUNDS[bg]
         reqs += [{"name": f"fx:{name}:{t}", "kind": "scene", "mood": mood, "scene": scene, "t": t, "skip": [BAT]}
                  for t in ticks]
+    for name, (kind, ticks) in LOOSE_FX.items():
+        reqs += [{"name": f"fx:{name}:{t}", "kind": kind, "t": t} for t in ticks]
     reqs += [{"name": "front:tub", "kind": "tub"}, {"name": "front:blanket", "kind": "blanket"}]
     reqs += [{"name": f"item:{i}", "kind": "item", "item": i} for i in ITEMS]
     for body, opts in FRONT.items():
@@ -227,6 +242,10 @@ def main():
         moving = [any(f[i] != frames[0][i] for f in frames) for i in range(W * H)]
         files[f"bg/{bg}"] = frames[0]
         files[f"fx/{name}"] = [[c if moving[i] else None for i, c in enumerate(f)] for f in frames]
+    for name, (_, ticks) in LOOSE_FX.items():
+        files[f"fx/{name}"] = [R[f"fx:{name}:{t}"] for t in ticks]
+    for name, draw in DRAWN_FX.items():
+        files[f"fx/{name}"] = draw()
     for f in ("tub", "blanket"):
         files[f"front/{f}"] = R[f"front:{f}"]
     # Snacks can be handed to any body, so each is drawn on its own with its
@@ -275,9 +294,6 @@ def main():
         files[f"body/{body}"] = R[f"{body}:"]
 
     out = args.out
-    if out.exists():
-        for p in out.rglob("*.png"):
-            p.unlink()
     w = Writer(out)
     for rel, layer in files.items():
         w.save(layer, rel)

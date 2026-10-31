@@ -1,7 +1,9 @@
 // tomogotchi firmware entry point.
 //
 // Inputs (touch, motion) post events to a queue. The main loop feeds them and
-// the clock into the pet logic, and redraws when the pet says something changed.
+// the clock into the pet logic as they arrive, and draws a frame every
+// SCENE_TICK_MS (about 9 fps) so Tomo can blink, bob and so on. The screen
+// only sends the part of each frame that changed.
 #include <time.h>
 
 #include "esp_log.h"
@@ -14,8 +16,6 @@
 #include "screen.h"
 
 static const char *TAG = "tomogotchi";
-
-#define TICK_MS 100
 
 static uint32_t now_ms(void)
 {
@@ -51,19 +51,25 @@ void app_main(void)
     pet_init(&pet, esp_random());
     pet_clock_t clock = local_clock();
     pet_tick(&pet, &clock, now_ms());
-    screen_draw(&pet);
     ESP_LOGI(TAG, "hello, mood=%s", pet_mood_name(pet_view(&pet).mood));
 
+    uint32_t tick = 0;
+    TickType_t next_frame = xTaskGetTickCount();
     for (;;) {
-        bool dirty = false;
+        // Handle input until the next frame is due.
+        TickType_t now = xTaskGetTickCount();
+        TickType_t wait = (TickType_t)(next_frame - now) <= pdMS_TO_TICKS(SCENE_TICK_MS) ? next_frame - now : 0;
         pet_event_t ev;
-        if (xQueueReceive(events, &ev, pdMS_TO_TICKS(TICK_MS)) == pdTRUE) {
-            dirty |= pet_handle_event(&pet, ev, now_ms());
+        if (xQueueReceive(events, &ev, wait) == pdTRUE) {
+            pet_handle_event(&pet, ev, now_ms());
+            continue;
         }
         clock = local_clock();
-        dirty |= pet_tick(&pet, &clock, now_ms());
-        if (dirty) {
-            screen_draw(&pet);
+        pet_tick(&pet, &clock, now_ms());
+        screen_draw(&pet, tick++);
+        next_frame += pdMS_TO_TICKS(SCENE_TICK_MS);
+        if ((TickType_t)(xTaskGetTickCount() - next_frame) < (TickType_t)0x80000000u) {
+            next_frame = xTaskGetTickCount() + pdMS_TO_TICKS(SCENE_TICK_MS);  // fell behind: don't try to catch up
         }
     }
 }

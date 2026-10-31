@@ -1,14 +1,18 @@
 #include "screen.h"
 
+#include <string.h>
+
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
 #include "lvgl.h"
+#include "scene.h"
 #include "sprites_gen.h"
 
 static const char *TAG = "screen";
 
 static lv_obj_t *s_canvas;
 static QueueHandle_t s_events;
+static const char *s_last_line;  // to log each speech line once
 
 // RGB565 canvas buffer: 52 * 64 * 2 bytes, about 6.6 KB.
 LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FORMAT_RGB565);
@@ -124,122 +128,31 @@ esp_err_t screen_start(QueueHandle_t events)
 }
 
 // --- Drawing ----------------------------------------------------------------
-// Each frame is layered from the generated sprites (see assets/sprites):
-// background, body, face and props at the body's head offset, front layer.
+// The scene component (components/scene) decides what to draw for the pet's
+// view at each animation tick and renders it into the canvas buffer. We then
+// compare with the previous frame and only invalidate the box that changed,
+// so a blink redraws a few art pixels instead of the whole panel.
 
-typedef struct {
-    sprite_bg_t bg;
-    int fx;  // sprite_fx_t, or -1 for none
-    sprite_body_t body;
-    sprite_face_t face;
-    int props[2];  // sprite_prop_t, -1 for none
-    int front;     // sprite_front_t, -1 for none
-    int dx, dy;    // whole-character offset
-} scene_t;
+static uint16_t s_prev[SCREEN_ART_W * SCREEN_ART_H];
+static bool s_prev_valid;
 
-static sprite_body_t costume_body(pet_costume_t c, bool back)
+// Mark art pixels `r` for redraw, in screen coordinates.
+static void invalidate_art(const scene_rect_t *r)
 {
-    static const sprite_body_t front[PET_COSTUME_COUNT] = {
-        [PET_COSTUME_DRACULA] = SPRITE_BODY_DRACULA, [PET_COSTUME_CHIIKAWA] = SPRITE_BODY_CHIIKAWA,
-        [PET_COSTUME_SADAKO] = SPRITE_BODY_SADAKO,   [PET_COSTUME_TREX] = SPRITE_BODY_TREX,
-        [PET_COSTUME_BARREL] = SPRITE_BODY_BARREL,   [PET_COSTUME_PIKACHU] = SPRITE_BODY_PIKACHU,
-        [PET_COSTUME_JASON] = SPRITE_BODY_JASON,     [PET_COSTUME_TRIKE] = SPRITE_BODY_TRIKE,
-        [PET_COSTUME_SYLVEON] = SPRITE_BODY_SYLVEON,
+    lv_area_t c;
+    lv_obj_get_coords(s_canvas, &c);
+    // The canvas is scaled about its centre.
+    int ox = (c.x1 + c.x2 + 1) / 2 - SCREEN_ART_W * SCREEN_ART_SCALE / 2;
+    int oy = (c.y1 + c.y2 + 1) / 2 - SCREEN_ART_H * SCREEN_ART_SCALE / 2;
+    lv_area_t a = {
+        .x1 = ox + r->x * SCREEN_ART_SCALE,
+        .y1 = oy + r->y * SCREEN_ART_SCALE,
+        .x2 = ox + (r->x + r->w) * SCREEN_ART_SCALE - 1,
+        .y2 = oy + (r->y + r->h) * SCREEN_ART_SCALE - 1,
     };
-    static const sprite_body_t rear[PET_COSTUME_COUNT] = {
-        [PET_COSTUME_DRACULA] = SPRITE_BODY_DRACULA_BACK, [PET_COSTUME_CHIIKAWA] = SPRITE_BODY_CHIIKAWA_BACK,
-        [PET_COSTUME_SADAKO] = SPRITE_BODY_SADAKO_BACK,   [PET_COSTUME_TREX] = SPRITE_BODY_TREX_BACK,
-        [PET_COSTUME_BARREL] = SPRITE_BODY_BARREL_BACK,   [PET_COSTUME_PIKACHU] = SPRITE_BODY_PIKACHU_BACK,
-        [PET_COSTUME_JASON] = SPRITE_BODY_JASON_BACK,     [PET_COSTUME_TRIKE] = SPRITE_BODY_TRIKE_BACK,
-        [PET_COSTUME_SYLVEON] = SPRITE_BODY_SYLVEON_BACK,
-    };
-    return back ? rear[c] : front[c];
-}
-
-// Map the pet's view to sprites.
-static scene_t scene_for(const pet_view_t *v)
-{
-    static const sprite_bg_t bgs[PET_MOOD_COUNT] = {
-        [PET_MOOD_ASLEEP] = SPRITE_BG_ASLEEP,   [PET_MOOD_GRUMPY] = SPRITE_BG_MORNING,
-        [PET_MOOD_COMMUTE] = SPRITE_BG_COMMUTE, [PET_MOOD_DEADPAN] = SPRITE_BG_DEADPAN,
-        [PET_MOOD_ME_TIME] = SPRITE_BG_BATH,    [PET_MOOD_NIGHT] = SPRITE_BG_NIGHT,
-        [PET_MOOD_SPOOKY] = SPRITE_BG_SPOOKY,
-    };
-    static const sprite_face_t faces[PET_FACE_COUNT] = {
-        [PET_FACE_BLANK] = SPRITE_FACE_BLANK,   [PET_FACE_GRUMPY] = SPRITE_FACE_GRUMPY,
-        [PET_FACE_SMIRK] = SPRITE_FACE_SMIRK,   [PET_FACE_ANNOYED] = SPRITE_FACE_ANNOYED,
-        [PET_FACE_DIZZY] = SPRITE_FACE_DIZZY,   [PET_FACE_HAPPY] = SPRITE_FACE_HAPPY,
-        [PET_FACE_FANG] = SPRITE_FACE_FANG,     [PET_FACE_SLEEP] = SPRITE_FACE_SLEEP,
-        [PET_FACE_SCREEN] = SPRITE_FACE_SCREEN, [PET_FACE_READ] = SPRITE_FACE_READ,
-        [PET_FACE_SHADES] = SPRITE_FACE_SHADES,
-    };
-    static const int item_props[PET_ITEM_COUNT] = {
-        [PET_ITEM_NONE] = -1, [PET_ITEM_GUMMY] = SPRITE_PROP_GUMMY,
-        [PET_ITEM_CRISPS] = SPRITE_PROP_CRISPS, [PET_ITEM_COFFEE] = SPRITE_PROP_COFFEE,
-    };
-
-    scene_t s = {bgs[v->mood], -1, SPRITE_BODY_CASUAL, faces[v->face], {-1, -1}, -1, 0, 0};
-
-    switch (v->outfit) {
-    case PET_OUTFIT_COAT: s.body = v->back ? SPRITE_BODY_CASUAL_BACK : SPRITE_BODY_COAT; break;  // no coat back yet
-    case PET_OUTFIT_PJS:
-        s.body = v->back                           ? SPRITE_BODY_PJS_BACK
-                 : v->device == PET_DEVICE_PHONE  ? SPRITE_BODY_PJS_PHONE
-                 : v->device == PET_DEVICE_SWITCH ? SPRITE_BODY_PJS_SWITCH
-                                                  : SPRITE_BODY_PJS;
-        break;
-    case PET_OUTFIT_BATH: s.body = SPRITE_BODY_BATH_BACK; break;
-    case PET_OUTFIT_COSTUME: s.body = costume_body(v->costume, v->back); break;
-    case PET_OUTFIT_LYING: s.body = v->scene == PET_SCENE_BEACH ? SPRITE_BODY_BEACH : SPRITE_BODY_COUCH; break;
-    case PET_OUTFIT_HIDDEN: s.body = SPRITE_BODY_HEAD; break;
-    default: s.body = v->back ? SPRITE_BODY_CASUAL_BACK : SPRITE_BODY_CASUAL; break;
-    }
-
-    switch (v->mood) {
-    case PET_MOOD_ASLEEP: s.front = SPRITE_FRONT_BLANKET; s.dy = 6; break;
-    case PET_MOOD_COMMUTE: s.fx = SPRITE_FX_TUNNEL; s.dy = 1; break;
-    case PET_MOOD_SPOOKY: s.fx = SPRITE_FX_STARS; break;
-    case PET_MOOD_ME_TIME:
-        if (v->scene == PET_SCENE_COUCH) {
-            s.bg = SPRITE_BG_COUCH;
-        } else if (v->scene == PET_SCENE_BEACH) {
-            s.bg = SPRITE_BG_BEACH;
-            s.fx = SPRITE_FX_WAVES;
-        } else if (!v->back) {
-            s.front = SPRITE_FRONT_TUB;  // TODO: tub behind him when he stands up
-            s.dy = 7;
-        }
-        break;
-    default: break;
-    }
-
-    if (!v->back) {
-        int n = 0;
-        if (v->bedhead) s.props[n++] = SPRITE_PROP_BEDHEAD;
-        if (v->item != PET_ITEM_NONE) s.props[n++] = item_props[v->item];
-        else if (v->cup) s.props[n++] = SPRITE_PROP_CUP;
-        else if (v->phone) s.props[n++] = SPRITE_PROP_PHONE;
-    }
-    if (v->shake) s.dx = 1;  // TODO: jiggle with the frame counter
-    return s;
-}
-
-static void draw_scene(const scene_t *s, unsigned frame)
-{
-    uint16_t *buf = (uint16_t *)s_canvas_buf.data;
-    int stride = s_canvas_buf.header.stride / sizeof(uint16_t);
-#define DRAW(sprite, x, y) sprite_draw(buf, stride, SCREEN_ART_W, SCREEN_ART_H, (sprite), frame, (x), (y))
-
-    DRAW(&sprite_bg[s->bg], 0, 0);
-    if (s->fx >= 0) DRAW(&sprite_fx[s->fx], 0, 0);
-    DRAW(&sprite_body[s->body], s->dx, s->dy);
-    int hx = s->dx + sprite_head_offset[s->body].x, hy = s->dy + sprite_head_offset[s->body].y;
-    DRAW(sprite_face(s->body, s->face), hx, hy);
-    for (int i = 0; i < 2; i++) {
-        if (s->props[i] >= 0) DRAW(sprite_prop(s->body, s->props[i]), hx, hy);
-    }
-    if (s->front >= 0) DRAW(&sprite_front[s->front], 0, 0);
-#undef DRAW
+    // Invalidate on the screen, not the canvas: the canvas object's own box is
+    // the unscaled 52x64, which would clip the area.
+    lv_obj_invalidate_area(lv_obj_get_screen(s_canvas), &a);
 }
 
 // The snack picker: gummy, crisps and coffee across the bottom third.
@@ -262,22 +175,35 @@ static void draw_menu(void)
     }
 }
 
-void screen_draw(const pet_t *pet)
+void screen_draw(const pet_t *pet, uint32_t tick)
 {
     pet_view_t v = pet_view(pet);
-    if (v.line != NULL) {
+    if (v.line != NULL && v.line != s_last_line) {
         ESP_LOGI(TAG, "%s: \"%s\"", pet_mood_name(v.mood), v.line);  // no speech bubble yet
     }
+    s_last_line = v.line;
     if (!bsp_display_lock(100)) {
         ESP_LOGW(TAG, "display busy, skipping frame");
         return;
     }
     s_menu_open = v.menu_open;
-    scene_t s = scene_for(&v);
-    draw_scene(&s, 0);  // TODO: tick animation frames, blinks and bobbing
+
+    uint16_t *buf = (uint16_t *)s_canvas_buf.data;
+    int stride = s_canvas_buf.header.stride / sizeof(uint16_t);
+    scene_t scene;
+    scene_build(&scene, &v, tick);
+    scene_render(&scene, buf, stride);
     if (v.menu_open) {
         draw_menu();
     }
-    lv_obj_invalidate(s_canvas);
+
+    scene_rect_t r = {0, 0, SCREEN_ART_W, SCREEN_ART_H};
+    if (!s_prev_valid || scene_diff(s_prev, SCREEN_ART_W, buf, stride, &r)) {
+        invalidate_art(&r);
+        for (int y = 0; y < SCREEN_ART_H; y++) {
+            memcpy(&s_prev[y * SCREEN_ART_W], &buf[y * stride], SCREEN_ART_W * sizeof(uint16_t));
+        }
+        s_prev_valid = true;
+    }
     bsp_display_unlock();
 }

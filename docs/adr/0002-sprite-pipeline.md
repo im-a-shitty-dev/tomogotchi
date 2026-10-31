@@ -33,5 +33,5 @@ needs to be cheap on an ESP32-C6 with no PSRAM (see ADR 0001).
   worry; RAM use is unchanged.
 - 255 colours shared across all art. If that gets tight, palettes can go per
   group without changing the drawing code much.
-- Free-moving effects (bats, Zs, steam) and screen-wide effects (the Tube
-  lights dimming) are drawn in code, not baked into sprites.
+- Free-moving effects (bats, Zs, steam) are sprite strips too, placed by the
+  scene code. Only screen-wide effects (the Tube lights dimming) are code.

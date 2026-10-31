@@ -27,11 +27,12 @@ const M = new Function(code)();
 const P = M.P;
 
 // Lying poses, as set up in the mockup's frame(). Keep in sync with it.
+// ox shifts the whole pose sideways (the mockup's drawLying has none built in).
 const LYING = {
-  couch: { by: 43, top: P.tee, topS: P.teeS, shorts: P.shorts, shortsS: P.shortsS, hold: 'manga' },
-  beach: { by: 41, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
+  couch: { by: 42, ox: -1, top: P.tee, topS: P.teeS, shorts: P.shorts, shortsS: P.shortsS, hold: 'manga' },
+  beach: { by: 38, top: P.S, topS: P.skinS, shorts: P.swim, shortsS: P.swimS, hold: 'colada', topless: true },
 };
-const LYING_HEAD = (ly) => [-11, ly.by - 35];
+const LYING_HEAD = (ly) => [-11 + (ly.ox || 0), ly.by - 35];
 
 function render(req) {
   const L = new M.Layer();
@@ -46,11 +47,45 @@ function render(req) {
     }
     case 'tomo': M.drawTomo(L, req.opts); L.outline(P.OL); break;
     case 'lying': {
-      const ly = LYING[req.pose], [hx, hy] = LYING_HEAD(ly);
+      const ly = LYING[req.pose], [hx, hy] = LYING_HEAD(ly), ox = ly.ox || 0;
       M.drawLying(L, ly, 'body');
-      M.drawTomo(L, { ox: hx, oy: hy, face: req.face, item: req.item, noBody: true });
+      M.drawTomo(L, { ox: hx - ox, oy: hy, face: req.face, item: req.item, noBody: true });
       if (!req.item) M.drawLying(L, ly, 'hold');
       L.outline(P.OL);
+      if (ox) {  // slide everything sideways
+        const a = L.a.slice();
+        L.a.fill(null);
+        for (let i = 0; i < a.length; i++) if (a[i]) L.px(i % M.W + ox, Math.floor(i / M.W), a[i]);
+      }
+      break;
+    }
+    // Free-moving bits the mockup draws inline in frame(). Copied from there;
+    // keep in sync. Each is drawn on an empty layer, without outline.
+    case 'steam': {
+      const t = req.t;
+      for (const [x, ph] of [[10, 0], [19, 7], [34, 3]]) { const s = (t + ph * 3) % 20; if (s < 13) L.px(x + (s % 6 < 3 ? 0 : 1), 36 - s, '#4f7f87'); }
+      break;
+    }
+    case 'zzz': {
+      const t = req.t;
+      for (let i = 0; i < 3; i++) {
+        const s = (t + i * 10) % 30; if (s > 22) continue;
+        const zx = 37 + i * 3 + Math.floor(s / 8), zy = 16 - Math.floor(s / 2), c = s > 16 ? '#5a5f80' : '#b9c2e8';
+        L.rect(zx, zy, 4, 1, c); L.px(zx + 2, zy + 1, c); L.px(zx + 1, zy + 2, c); L.rect(zx, zy + 3, 4, 1, c);
+      }
+      break;
+    }
+    case 'bat': {
+      // One bat crossing the sky (the mockup's first bat, without its bob).
+      const t = req.t, bx = (t % 66) - 7, by = 7;
+      const wy = by + (t % 4 < 2 ? -1 : 1), c = '#05030a';
+      L.px(bx, by, c); L.px(bx, by + 1, c);
+      [-2, -1, 1, 2].forEach(dx => L.px(bx + dx, wy, c));
+      break;
+    }
+    case 'splash': {
+      // Drops flicking out of the tub when he's shaken.
+      for (const [x, y] of [[2, 37], [3, 35], [49, 36], [48, 34], [10, 35], [41, 34]]) L.px(x, y - (req.t % 2), '#9fd8ff');
       break;
     }
     case 'item': M.drawItem(L, req.item, 0, 0); L.outline(P.OL); break;
