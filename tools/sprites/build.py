@@ -29,7 +29,7 @@ ASSETS = REPO / "assets" / "sprites"
 OUT_DIR = REPO / "firmware" / "components" / "sprites"
 OUT_H = OUT_DIR / "include" / "sprites_gen.h"
 OUT_C = OUT_DIR / "sprites_gen.c"
-GROUPS = ["bg", "body", "face", "prop", "front", "fx"]
+GROUPS = ["bg", "body", "face", "prop", "front", "fx", "hud"]
 
 
 class SpriteError(Exception):

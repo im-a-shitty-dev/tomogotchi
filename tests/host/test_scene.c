@@ -20,6 +20,7 @@ static pet_view_t view(pet_mood_t mood)
     memset(&v, 0, sizeof v);
     v.mood = mood;
     v.face = PET_FACE_BLANK;
+    v.happiness = PET_HAPPINESS_START;  // no rain cloud or sparkles
     return v;
 }
 
@@ -223,6 +224,175 @@ static void test_blink_redraws_only_the_eyes(void)
     CHECK(r.w * r.h < 40);
 }
 
+static void test_mood_rain_and_sparkles(void)
+{
+    scene_t s;
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.happiness = 0;
+    scene_build(&s, &v, 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_RAIN]) >= 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_SPARKLE]) < 0);
+
+    v.mood = PET_MOOD_ASLEEP;  // no rain on him in bed
+    scene_build(&s, &v, 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_RAIN]) < 0);
+
+    v = view(PET_MOOD_DEADPAN);
+    v.happiness = 3;
+    scene_build(&s, &v, 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_RAIN]) < 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_SPARKLE]) < 0);
+
+    v.happiness = PET_HAPPINESS_MAX;
+    scene_build(&s, &v, 7);
+    int i = find(&s, &sprite_fx[SPRITE_FX_SPARKLE]);
+    CHECK(i >= 0 && s.layers[i].frame == 7);
+}
+
+// Build a frame with the HUD on top.
+static void hud_frame(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_time_t *tm, uint32_t t)
+{
+    scene_build(s, v, t);
+    scene_hud(s, hud, v, tm, t);
+}
+
+static void test_pop_up_hearts(void)
+{
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.happiness = 3;
+
+    hud_frame(&s, &hud, &v, NULL, 100);  // first frame: nothing to compare with
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_POP_UP]) < 0);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_POP_DOWN]) < 0);
+
+    v.happiness = 4;  // fed: pink heart floats up and wobbles
+    hud_frame(&s, &hud, &v, NULL, 101);
+    int i = find(&s, &sprite_hud[SPRITE_HUD_POP_UP]);
+    CHECK(i >= 0 && s.layers[i].y == 0 && s.layers[i].x == 0);
+    hud_frame(&s, &hud, &v, NULL, 104);
+    i = find(&s, &sprite_hud[SPRITE_HUD_POP_UP]);
+    CHECK(i >= 0 && s.layers[i].y == -3 && s.layers[i].x == 1);
+    hud_frame(&s, &hud, &v, NULL, 101 + SCENE_POP_TICKS);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_POP_UP]) < 0);
+
+    v.happiness = 3;  // poked: broken blue heart
+    hud_frame(&s, &hud, &v, NULL, 200);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_POP_DOWN]) >= 0);
+
+    // On the beach the broken heart is violet, to stand out from the sky.
+    v = view(PET_MOOD_ME_TIME);
+    v.scene = PET_SCENE_BEACH;
+    v.outfit = PET_OUTFIT_LYING;
+    v.happiness = 2;
+    hud_frame(&s, &hud, &v, NULL, 201);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_POP_DOWN_BEACH]) >= 0);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_POP_DOWN]) < 0);
+
+    // Survives the tick counter wrapping.
+    scene_hud_init(&hud);
+    v.happiness = 2;
+    hud_frame(&s, &hud, &v, NULL, 0xfffffffeu);
+    v.happiness = 3;
+    hud_frame(&s, &hud, &v, NULL, 0xffffffffu);
+    hud_frame(&s, &hud, &v, NULL, 2);
+    i = find(&s, &sprite_hud[SPRITE_HUD_POP_UP]);
+    CHECK(i >= 0 && s.layers[i].y == -3);
+}
+
+static int count_layers(const scene_t *s, const sprite_t *sprite)
+{
+    int n = 0;
+    for (int i = 0; i < s->count; i++) n += s->layers[i].sprite == sprite;
+    return n;
+}
+
+static void test_peek_strip(void)
+{
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.happiness = 2;
+    scene_time_t tm = {.hour = 7, .minute = 45, .second = 10};
+
+    hud_frame(&s, &hud, &v, &tm, 50);
+    CHECK(s.band_rows == 0);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_HEART]) < 0);
+
+    scene_hud_peek(&hud, 50);
+    hud_frame(&s, &hud, &v, &tm, 50);  // starts hidden above the top
+    CHECK(s.band_rows == 0);
+    hud_frame(&s, &hud, &v, &tm, 51);  // sliding in
+    CHECK(s.band_rows == SCENE_PEEK_ROWS - 6);
+    hud_frame(&s, &hud, &v, &tm, 53);  // fully down
+    CHECK(s.band_rows == SCENE_PEEK_ROWS);
+    CHECK(s.band_from == find(&s, &sprite_hud[SPRITE_HUD_DIGITS]));
+
+    // 07:45 with the colon showing on even seconds, 2 of 5 hearts.
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_HEART]) == 2);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_HEART_EMPTY]) == 3);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_DIGITS]) == 4);
+    int d = find(&s, &sprite_hud[SPRITE_HUD_DIGITS]);
+    CHECK(s.layers[d].frame == 0 && s.layers[d + 1].frame == 7);
+    CHECK(s.layers[d + 2].frame == 4 && s.layers[d + 3].frame == 5);
+    CHECK(s.layers[d + 2].x == 10 && s.layers[d].y == 0);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_COLON]) >= 0);
+    tm.second = 11;
+    hud_frame(&s, &hud, &v, &tm, 54);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_COLON]) < 0);
+
+    // Hearts follow the slot spacing.
+    int h = find(&s, &sprite_hud[SPRITE_HUD_HEART]);
+    CHECK(s.layers[h].x == 0 && s.layers[h + 1].x == 4 && s.layers[h + 4].x == 16);
+
+    // Slides out at the end and is gone after SCENE_PEEK_TICKS.
+    hud_frame(&s, &hud, &v, &tm, 50 + SCENE_PEEK_TICKS - 1);
+    CHECK(s.band_rows > 0 && s.band_rows < SCENE_PEEK_ROWS);
+    hud_frame(&s, &hud, &v, &tm, 50 + SCENE_PEEK_TICKS);
+    CHECK(s.band_rows == 0);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_HEART]) < 0);
+
+    // Unknown time: hearts but no clock.
+    tm.hour = -1;
+    scene_hud_peek(&hud, 300);
+    hud_frame(&s, &hud, &v, &tm, 305);
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_DIGITS]) < 0);
+    CHECK(count_layers(&s, &sprite_hud[SPRITE_HUD_HEART_EMPTY]) == 3);
+
+    // Swiping again while open keeps it open without sliding back in.
+    scene_hud_peek(&hud, 320);
+    hud_frame(&s, &hud, &v, &tm, 320);
+    CHECK(s.band_rows == SCENE_PEEK_ROWS);
+    hud_frame(&s, &hud, &v, &tm, 340);
+    CHECK(s.band_rows == SCENE_PEEK_ROWS);
+}
+
+static void test_peek_band_darkens_the_top(void)
+{
+    static uint16_t plain[SCENE_W * SCENE_H], peek[SCENE_W * SCENE_H];
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.happiness = 3;
+    scene_build(&s, &v, 10);
+    scene_render(&s, plain, SCENE_W);
+
+    scene_hud_peek(&hud, 0);
+    hud_frame(&s, &hud, &v, NULL, 10);
+    scene_render(&s, peek, SCENE_W);
+    scene_rect_t r;
+    CHECK(scene_diff(plain, SCENE_W, peek, SCENE_W, &r));
+    CHECK(r.y == 0 && r.h == SCENE_PEEK_ROWS);  // only the strip changed
+    // Background behind the band is darker, not replaced.
+    int x = 25, y = 0;  // between the clock and the hearts
+    CHECK(peek[y * SCENE_W + x] != plain[y * SCENE_W + x] || plain[y * SCENE_W + x] == 0);
+    CHECK(peek[(SCENE_PEEK_ROWS - 1) * SCENE_W + x] == 0x5a4d);  // divider
+}
+
 int main(void)
 {
     test_resting_faces_blink();
@@ -234,6 +404,10 @@ int main(void)
     test_every_view_builds();
     test_diff_finds_the_changed_box();
     test_blink_redraws_only_the_eyes();
+    test_mood_rain_and_sparkles();
+    test_pop_up_hearts();
+    test_peek_strip();
+    test_peek_band_darkens_the_top();
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
         return 1;

@@ -14,6 +14,7 @@ static pet_view_t base(pet_mood_t mood, pet_outfit_t outfit, pet_face_t face)
     v.mood = mood;
     v.outfit = outfit;
     v.face = face;
+    v.happiness = PET_HAPPINESS_START;  // no rain cloud or sparkles
     return v;
 }
 
