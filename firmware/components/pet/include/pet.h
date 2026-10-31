@@ -143,6 +143,12 @@ typedef struct {
 #define PET_SULK_FED 3
 // ...and this long in the bath without being disturbed before he forgives you.
 #define PET_SULK_BATH_MS (10u * 60u * 1000u)
+// Each poke or shake in that bath adds this much to his wait (up to the full
+// PET_SULK_BATH_MS again), rather than starting it over.
+#define PET_SULK_POKE_MS (60u * 1000u)
+// Pokes he minds (me-time, grumpy mornings) cost a heart every this many,
+// so a fumbled double-tap doesn't cost two.
+#define PET_POKES_PER_HEART 3
 // The snack picker closes itself after this long.
 #define PET_MENU_MS 6000u
 
@@ -168,6 +174,7 @@ typedef struct {
     bool sulking;
     bool sulk_bathing;         // fed enough; now needs undisturbed bath time
     uint32_t sulk_bath_since_ms;
+    uint8_t annoying_pokes;    // towards PET_POKES_PER_HEART
 
     // The current short reaction (a face, a line, maybe a snack in hand).
     bool reacting;
@@ -235,8 +242,8 @@ pet_view_t pet_view(const pet_t *pet);
 // (except when the schedule says spooky, when it just wraps around).
 //
 // Swiping up picks a me-time scene at any time he's awake: bath, couch,
-// beach, then back to his schedule. It takes any costume off, and resets at
-// bedtime.
+// beach, then back to his schedule, skipping the one he's already in. It
+// takes any costume off, and resets at bedtime.
 //
 // His schedule: the mood and me-time scene for a given time, before any
 // interaction. Exposed for tests.

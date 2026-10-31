@@ -282,6 +282,14 @@ static void add_happiness(pet_t *pet, int delta, uint32_t now_ms)
     }
 }
 
+// Disturbed in his sulk bath: he needs a bit longer, never more than a fresh
+// PET_SULK_BATH_MS.
+static void disturb_sulk_bath(pet_t *pet, uint32_t now_ms)
+{
+    uint32_t later = pet->sulk_bath_since_ms + PET_SULK_POKE_MS;
+    pet->sulk_bath_since_ms = time_reached(now_ms, later) ? later : now_ms;
+}
+
 // --- Time ----------------------------------------------------------------------
 
 void pet_set_place(pet_t *pet, pet_place_t place)
@@ -399,8 +407,8 @@ static void on_tap(pet_t *pet, uint32_t now_ms)
         add_happiness(pet, -1, now_ms);
         return;
     }
-    if (pet->sulk_bathing) {  // disturbed: the clock starts again
-        pet->sulk_bath_since_ms = now_ms;
+    if (pet->sulk_bathing) {  // disturbed: he needs a bit longer
+        disturb_sulk_bath(pet, now_ms);
         say(pet, pick(pet, L_SULK_BATH_POKED), PET_FACE_ANNOYED, 14, now_ms);
         return;
     }
@@ -429,7 +437,8 @@ static void on_tap(pet_t *pet, uint32_t now_ms)
     }
     pet_face_t face = mood == PET_MOOD_DEADPAN ? PET_FACE_SMIRK : PET_FACE_ANNOYED;
     say(pet, pick(pet, tap_lines(mood, scene)), face, 16, now_ms);
-    if (mood == PET_MOOD_ME_TIME || mood == PET_MOOD_GRUMPY) {
+    if ((mood == PET_MOOD_ME_TIME || mood == PET_MOOD_GRUMPY) && ++pet->annoying_pokes >= PET_POKES_PER_HEART) {
+        pet->annoying_pokes = 0;
         add_happiness(pet, -1, now_ms);
     }
 }
@@ -445,7 +454,7 @@ static void on_shake(pet_t *pet, uint32_t now_ms)
     default: face = PET_FACE_ANNOYED; break;
     }
     if (pet->sulk_bathing) {
-        pet->sulk_bath_since_ms = now_ms;
+        disturb_sulk_bath(pet, now_ms);
     }
     say(pet, pick(pet, shake_lines(mood, current_scene(pet))), face, 14, now_ms);
     pet->react_shake = true;
@@ -551,9 +560,16 @@ static void on_swipe_up(pet_t *pet, uint32_t now_ms)
         say(pet, pick(pet, L_SULK), PET_FACE_ANNOYED, 12, now_ms);
         return;
     }
-    // Step on from the scene he's in now: bath, couch, beach, then schedule.
-    pet_scene_t next = (pet_scene_t)(current_scene(pet) + 1);
-    pet->chosen_scene = next < PET_SCENE_COUNT ? next : PET_SCENE_NONE;
+    // Step through bath, couch, beach, then back to the schedule, counting
+    // from what was last picked (not from the schedule's scene, or a
+    // scheduled couch would bounce between couch and beach). Skip a pick
+    // that looks the same as now, so every swipe changes something.
+    pet_scene_t shown = current_scene(pet);
+    pet_scene_t next = pet->chosen_scene;
+    do {
+        next = (pet_scene_t)((next + 1) % PET_SCENE_COUNT);
+    } while (next != PET_SCENE_NONE && next == shown);
+    pet->chosen_scene = next;
     pet->dressed_up = false;
     pet->back = false;
     pet->reacting = false;

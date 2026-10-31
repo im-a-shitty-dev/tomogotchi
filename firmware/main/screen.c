@@ -28,12 +28,16 @@ LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FOR
 
 // --- Input ------------------------------------------------------------------
 // A tap waits briefly in case a second one makes it a double-tap (turn him
-// around). A long press opens the snack picker; while it is open, a tap picks
-// the item under your finger (left, middle or right third). Swiping left or
+// around). A long press opens the snack picker; while it is open, a tap on
+// the picker strip at the bottom picks the item under your finger (left,
+// middle or right third), and a tap anywhere else closes it. Swiping left or
 // right changes his outfit; swiping up changes the scene; swiping down peeks
 // at the clock and his hearts.
 
-#define DOUBLE_TAP_MS 280
+// From the first tap's release to the second's. 280 ms was too tight: a
+// missed double-tap became two taps, which annoyed him.
+#define DOUBLE_TAP_MS 400
+#define MENU_TOP_ART_Y 44  // the snack picker strip's top row, in art pixels
 
 static lv_timer_t *s_tap_timer;
 static bool s_tap_pending;  // a tap is waiting to see if a second one follows
@@ -64,6 +68,13 @@ static void on_tap(lv_event_t *e)
     if (s_menu_open) {
         lv_point_t p;
         lv_indev_get_point(lv_indev_active(), &p);
+        lv_area_t c;
+        lv_obj_get_coords(s_canvas, &c);
+        int art_top = (c.y1 + c.y2 + 1) / 2 - SCREEN_ART_H * SCREEN_ART_SCALE / 2;  // scaled about its centre
+        if (p.y < art_top + MENU_TOP_ART_Y * SCREEN_ART_SCALE) {
+            post((pet_event_t){.type = PET_INPUT_TAP});  // tapped away: the pet closes it
+            return;
+        }
         int third = p.x * 3 / lv_display_get_horizontal_resolution(NULL);
         static const pet_item_t items[3] = {PET_ITEM_GUMMY, PET_ITEM_CRISPS, PET_ITEM_COFFEE};
         post((pet_event_t){.type = PET_INPUT_GIVE, .item = items[third < 0 ? 0 : third > 2 ? 2 : third]});
