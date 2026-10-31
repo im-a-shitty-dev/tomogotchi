@@ -214,6 +214,9 @@ static pet_mood_t current_mood(const pet_t *pet)
     if (pet->dressed_up) {
         return PET_MOOD_SPOOKY;
     }
+    if (pet->chosen_scene != PET_SCENE_NONE) {
+        return PET_MOOD_ME_TIME;
+    }
     return pet->scheduled;
 }
 
@@ -222,7 +225,13 @@ static pet_scene_t current_scene(const pet_t *pet)
     if (current_mood(pet) != PET_MOOD_ME_TIME) {
         return PET_SCENE_NONE;
     }
-    return pet->scheduled == PET_MOOD_ME_TIME ? pet->scene : PET_SCENE_BATH;
+    if (pet->sulk_bathing) {
+        return PET_SCENE_BATH;
+    }
+    if (pet->chosen_scene != PET_SCENE_NONE) {
+        return pet->chosen_scene;
+    }
+    return pet->scene;
 }
 
 // He can only turn around when he's up: not asleep, not lying down.
@@ -255,6 +264,7 @@ static void start_sulk(pet_t *pet, uint32_t now_ms)
 {
     pet->sulking = true;
     pet->sulk_bathing = false;
+    pet->chosen_scene = PET_SCENE_NONE;  // gets up so he can turn his back
     pet->back = false;
     pet->menu_open = false;
     say(pet, pick(pet, L_SULK_START), PET_FACE_ANNOYED, 16, now_ms);
@@ -311,6 +321,7 @@ bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms)
         pet->reacting = false;
         if (mood == PET_MOOD_ASLEEP) {
             pet->dressed_up = false;  // costume off for bed
+            pet->chosen_scene = PET_SCENE_NONE;
         }
         changed = true;
     }
@@ -529,6 +540,25 @@ static void on_swipe(pet_t *pet, int direction, uint32_t now_ms)
     say_costume(pet, now_ms);
 }
 
+static void on_swipe_up(pet_t *pet, uint32_t now_ms)
+{
+    pet_mood_t mood = current_mood(pet);
+    if (mood == PET_MOOD_ASLEEP) {
+        say(pet, pick(pet, L_NO_TURN_ASLEEP), PET_FACE_SLEEP, 10, now_ms);
+        return;
+    }
+    if (pet->sulking) {
+        say(pet, pick(pet, L_SULK), PET_FACE_ANNOYED, 12, now_ms);
+        return;
+    }
+    // Step on from the scene he's in now: bath, couch, beach, then schedule.
+    pet_scene_t next = (pet_scene_t)(current_scene(pet) + 1);
+    pet->chosen_scene = next < PET_SCENE_COUNT ? next : PET_SCENE_NONE;
+    pet->dressed_up = false;
+    pet->back = false;
+    pet->reacting = false;
+}
+
 bool pet_handle_event(pet_t *pet, pet_event_t event, uint32_t now_ms)
 {
     pet->last_care_ms = now_ms;
@@ -542,6 +572,7 @@ bool pet_handle_event(pet_t *pet, pet_event_t event, uint32_t now_ms)
         return true;
     case PET_INPUT_GIVE: on_give(pet, event.item, now_ms); return true;
     case PET_INPUT_SWIPE: on_swipe(pet, event.direction, now_ms); return true;
+    case PET_INPUT_SWIPE_UP: on_swipe_up(pet, now_ms); return true;
     }
     return false;
 }

@@ -124,6 +124,7 @@ typedef enum {
     PET_INPUT_SHAKE,      // device shaken (IMU)
     PET_INPUT_GIVE,       // picked an item in the snack picker (see .item)
     PET_INPUT_SWIPE,      // change outfit (see .direction)
+    PET_INPUT_SWIPE_UP,   // change scene: bath, couch, beach, then back
 } pet_input_t;
 
 typedef struct {
@@ -157,6 +158,7 @@ typedef struct {
     pet_costume_t costume;
     pet_device_t device;
     bool dressed_up;           // put in a costume by swiping; off at bedtime
+    pet_scene_t chosen_scene;  // picked by swiping up (NONE: follow schedule); off at bedtime
     bool back;                 // turned around by a double-tap
     bool menu_open;
     uint32_t menu_until_ms;
@@ -231,6 +233,10 @@ pet_view_t pet_view(const pet_t *pet);
 // Every day is Halloween: swiping dresses him up at any time he's awake.
 // Swiping steps through the costumes and then back to his normal clothes
 // (except when the schedule says spooky, when it just wraps around).
+//
+// Swiping up picks a me-time scene at any time he's awake: bath, couch,
+// beach, then back to his schedule. It takes any costume off, and resets at
+// bedtime.
 //
 // His schedule: the mood and me-time scene for a given time, before any
 // interaction. Exposed for tests.

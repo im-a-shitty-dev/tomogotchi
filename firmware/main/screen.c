@@ -30,7 +30,8 @@ LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FOR
 // A tap waits briefly in case a second one makes it a double-tap (turn him
 // around). A long press opens the snack picker; while it is open, a tap picks
 // the item under your finger (left, middle or right third). Swiping left or
-// right changes his outfit; swiping down peeks at the clock and his hearts.
+// right changes his outfit; swiping up changes the scene; swiping down peeks
+// at the clock and his hearts.
 
 #define DOUBLE_TAP_MS 280
 
@@ -78,20 +79,24 @@ static void on_tap(lv_event_t *e)
     lv_timer_resume(s_tap_timer);
 }
 
-// Swipe left or right to change his outfit, or down to peek at the clock
+// Swipe left or right to change his outfit, up to change the scene, or down to peek at the clock
 // and his hearts. The peek is display-only, so it doesn't go to the pet.
 static void on_gesture(lv_event_t *e)
 {
     (void)e;
     lv_indev_t *indev = lv_indev_active();
     lv_dir_t dir = lv_indev_get_gesture_dir(indev);
-    if (dir != LV_DIR_LEFT && dir != LV_DIR_RIGHT && dir != LV_DIR_BOTTOM) {
+    if (dir != LV_DIR_LEFT && dir != LV_DIR_RIGHT && dir != LV_DIR_TOP && dir != LV_DIR_BOTTOM) {
         return;
     }
     lv_indev_wait_release(indev);  // a swipe is not also a tap
     cancel_tap();
     if (dir == LV_DIR_BOTTOM) {
         s_peek_asked = true;
+        return;
+    }
+    if (dir == LV_DIR_TOP) {  // swipe up: next scene
+        post((pet_event_t){.type = PET_INPUT_SWIPE_UP});
         return;
     }
     post((pet_event_t){.type = PET_INPUT_SWIPE, .direction = dir == LV_DIR_LEFT ? 1 : -1});
