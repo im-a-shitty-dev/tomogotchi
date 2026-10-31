@@ -44,16 +44,20 @@ pet_mood_t pet_mood_for(const pet_clock_t *c)
     return mood;
 }
 
-pet_scene_t pet_scene_for(const pet_clock_t *c)
+// Where he'd have me-time on this day: bath on weekdays, couch or beach at
+// the weekend.
+static pet_scene_t me_time_scene(const pet_clock_t *c)
 {
-    if (pet_mood_for(c) != PET_MOOD_ME_TIME) {
-        return PET_SCENE_NONE;
-    }
     if (!is_weekend(c)) {
         return PET_SCENE_BATH;
     }
     bool summer = c->month >= 6 && c->month <= 8;
     return summer ? PET_SCENE_BEACH : PET_SCENE_COUCH;
+}
+
+pet_scene_t pet_scene_for(const pet_clock_t *c)
+{
+    return pet_mood_for(c) == PET_MOOD_ME_TIME ? me_time_scene(c) : PET_SCENE_NONE;
 }
 
 // --- Names -------------------------------------------------------------------
@@ -275,6 +279,11 @@ void pet_set_place(pet_t *pet, pet_place_t place)
     pet->place = place < PET_PLACE_COUNT ? place : PET_PLACE_UNKNOWN;
 }
 
+void pet_set_charging(pet_t *pet, bool charging)
+{
+    pet->charging = charging;
+}
+
 bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms)
 {
     bool changed = false;
@@ -286,6 +295,10 @@ bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms)
             mood = PET_MOOD_COMMUTE;
         } else if (pet->place == PET_PLACE_HOME && mood == PET_MOOD_COMMUTE) {
             mood = PET_MOOD_DEADPAN;
+        }
+        if (pet->charging) {  // on the charger: me-time, wherever he is
+            mood = PET_MOOD_ME_TIME;
+            scene = me_time_scene(clock);
         }
         if (mood != PET_MOOD_ME_TIME) {
             scene = PET_SCENE_NONE;

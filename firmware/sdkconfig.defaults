@@ -11,3 +11,9 @@ CONFIG_BSP_DISPLAY_LVGL_BUF_HEIGHT=40
 
 # Wi-Fi: resync the clock over SNTP every 3 hours (the RTC holds it between).
 CONFIG_LWIP_SNTP_UPDATE_DELAY=10800000
+
+# Battery: let the chip light-sleep while the screen is off (see main/power.c).
+# Light sleep is only switched on while dozing; with the screen on we run at
+# full speed as before.
+CONFIG_PM_ENABLE=y
+CONFIG_FREERTOS_USE_TICKLESS_IDLE=y

@@ -565,6 +565,51 @@ static void test_costume_still_beats_the_train(void)
     CHECK(pet_view(&pet).mood == PET_MOOD_SPOOKY);
 }
 
+// --- Charging ---------------------------------------------------------------------
+
+static void test_charging_means_me_time(void)
+{
+    pet_t pet = pet_at(TUE, 10, 0);  // scheduled deadpan at work
+    pet_set_charging(&pet, true);
+    CHECK(tick(&pet, TUE, 10, 0, 1000));
+    CHECK(pet_view(&pet).mood == PET_MOOD_ME_TIME);
+    CHECK(pet_view(&pet).scene == PET_SCENE_BATH);  // weekday: bath
+
+    pet = pet_at(SAT, 14, 0);
+    pet_set_charging(&pet, true);
+    tick(&pet, SAT, 14, 0, 1000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_ME_TIME);
+    CHECK(pet_view(&pet).scene == PET_SCENE_COUCH);  // weekend, not summer
+
+    // Off the charger, back to the schedule.
+    pet_set_charging(&pet, false);
+    CHECK(tick(&pet, SAT, 14, 0, 2000));
+    CHECK(pet_view(&pet).mood != PET_MOOD_ME_TIME);
+}
+
+static void test_charging_beats_the_train_but_not_bed(void)
+{
+    pet_t pet = pet_at(TUE, 10, 0);
+    pet_set_place(&pet, PET_PLACE_COMMUTING);
+    pet_set_charging(&pet, true);
+    tick(&pet, TUE, 10, 0, 1000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_ME_TIME);
+
+    pet = pet_at(TUE, 3, 0);
+    pet_set_charging(&pet, true);
+    tick(&pet, TUE, 3, 0, 1000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_ASLEEP);
+}
+
+static void test_costume_still_beats_the_charger(void)
+{
+    pet_t pet = pet_at(TUE, 10, 0);
+    pet_set_charging(&pet, true);
+    tick(&pet, TUE, 10, 0, 1000);
+    pet_handle_event(&pet, SWIPE, 2000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_SPOOKY);
+}
+
 int main(void)
 {
     test_weekday_schedule();
@@ -609,6 +654,9 @@ int main(void)
     test_home_cancels_scheduled_commute();
     test_unknown_place_follows_the_schedule();
     test_costume_still_beats_the_train();
+    test_charging_means_me_time();
+    test_charging_beats_the_train_but_not_bed();
+    test_costume_still_beats_the_charger();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);
