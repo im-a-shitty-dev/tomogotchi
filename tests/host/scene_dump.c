@@ -21,7 +21,7 @@ static pet_view_t base(pet_mood_t mood, pet_outfit_t outfit, pet_face_t face)
 int main(int argc, char **argv)
 {
     int ticks = argc > 1 ? atoi(argv[1]) : 66;
-    pet_view_t views[12];
+    pet_view_t views[16];
     int n = 0;
     views[n] = base(PET_MOOD_DEADPAN, PET_OUTFIT_CASUAL, PET_FACE_BLANK), views[n++].phone = true;
     views[n] = base(PET_MOOD_GRUMPY, PET_OUTFIT_CASUAL, PET_FACE_GRUMPY), views[n].cup = views[n].bedhead = true, n++;
@@ -35,6 +35,14 @@ int main(int argc, char **argv)
     views[n] = base(PET_MOOD_SPOOKY, PET_OUTFIT_COSTUME, PET_FACE_BLANK), views[n++].costume = PET_COSTUME_DRACULA;
     views[n] = base(PET_MOOD_DEADPAN, PET_OUTFIT_CASUAL, PET_FACE_DIZZY), views[n++].shake = true;
     views[n] = base(PET_MOOD_ME_TIME, PET_OUTFIT_HIDDEN, PET_FACE_ANNOYED), views[n].scene = PET_SCENE_BATH, views[n++].shake = true;
+    views[n++] = base(PET_MOOD_WORK, PET_OUTFIT_WORK, PET_FACE_BLANK);
+    views[n] = base(PET_MOOD_WORK, PET_OUTFIT_WORK, PET_FACE_BLANK), views[n++].back = true;
+    // Walking in with shopping, then a full floor.
+    views[n] = base(PET_MOOD_DEADPAN, PET_OUTFIT_CASUAL, PET_FACE_SMIRK), views[n].phone = true;
+    views[n].carry[0] = PET_BAG_FASHION, views[n].carry[1] = PET_BAG_PAPER, views[n++].carry_count = 2;
+    views[n] = base(PET_MOOD_DEADPAN, PET_OUTFIT_CASUAL, PET_FACE_ANNOYED), views[n].phone = true;
+    for (int i = 0; i < PET_BAGS_MAX; i++) views[n].bags[i] = (pet_bag_t)i;
+    views[n++].bag_count = PET_BAGS_MAX;
 
     static uint16_t buf[SCENE_W * SCENE_H];
     for (int i = 0; i < n; i++) {

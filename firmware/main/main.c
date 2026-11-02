@@ -84,6 +84,7 @@ static bool update_power(wake_t *wake, pet_t *pet, bool *on)
             power_set_dozing(true);
         }
     }
+    pet_set_screen_on(pet, want);  // new shopping bags wait until he can be seen
     return want;
 }
 

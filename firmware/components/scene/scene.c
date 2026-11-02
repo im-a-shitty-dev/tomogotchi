@@ -25,6 +25,40 @@
 #define BUBBLE_EDGE RGB565(0x07, 0x05, 0x0b)  // the art's outline colour
 #define BUBBLE_INK RGB565(0x12, 0x0e, 0x18)
 
+// --- Shopping bags -------------------------------------------------------------
+// Bag art is cut with its bottom-left corner at BAG_AT; scene code moves it.
+// Floor slots are filled in order, front ones last. Sizes include handles.
+
+#define BAG_AT_X 2
+#define BAG_AT_Y 61
+#define CARRY_Y 46  // his hands, where the fingers go over the handles
+#define POOF_AT 20  // the poof strip is centred on (20, 20)
+
+static const struct { int8_t x, by; } BAG_SLOTS[PET_BAGS_MAX] = {{1, 59}, {41, 59}, {8, 62}, {34, 62}, {45, 63}};
+static const int8_t CARRY_HANDS[PET_BAGS_CARRIED] = {15, 36};
+static const struct { uint8_t w, h; sprite_bag_t fill, edge; } BAGS[PET_BAG_COUNT] = {
+    [PET_BAG_PAPER] = {7, 10, SPRITE_BAG_PAPER, SPRITE_BAG_PAPER_EDGE},
+    [PET_BAG_FASHION] = {6, 11, SPRITE_BAG_FASHION, SPRITE_BAG_FASHION_EDGE},
+    [PET_BAG_TOTE] = {7, 11, SPRITE_BAG_TOTE, SPRITE_BAG_TOTE_EDGE},
+    [PET_BAG_GUMMY] = {7, 9, SPRITE_BAG_GUMMY, SPRITE_BAG_GUMMY_EDGE},
+    [PET_BAG_SHOEBOX] = {9, 5, SPRITE_BAG_SHOEBOX, SPRITE_BAG_SHOEBOX_EDGE},
+};
+
+static bool bag_ok(const pet_view_t *v, int i)
+{
+    return i >= 0 && i < v->bag_count && i < PET_BAGS_MAX && (unsigned)v->bags[i] < PET_BAG_COUNT;
+}
+
+int scene_bag_at(const pet_view_t *v, int x, int y)
+{
+    for (int i = v->bag_count - 1; i >= 0; i--) {
+        if (!bag_ok(v, i)) continue;
+        int bx = BAG_SLOTS[i].x, by = BAG_SLOTS[i].by, w = BAGS[v->bags[i]].w, h = BAGS[v->bags[i]].h;
+        if (x >= bx - 1 && x <= bx + w && y >= by - h && y <= by + 1) return i;
+    }
+    return -1;
+}
+
 // --- Mapping the pet's view to sprites ---------------------------------------
 
 static sprite_body_t costume_body(pet_costume_t c, bool back)
@@ -251,6 +285,26 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
     }
     if (zzz) push(s, &sprite_fx[SPRITE_FX_ZZZ], t, 0, 0);
 
+    // Shopping bags: in his hands as he walks in (fingers over the
+    // handles), then on the floor in front of him. All the outlines go
+    // first, so where bags overlap they share one, like the mockup.
+    for (int pass = 0; pass < 2; pass++) {
+        for (int i = 0; i < v->carry_count && i < PET_BAGS_CARRIED; i++) {
+            if ((unsigned)v->carry[i] >= PET_BAG_COUNT) continue;
+            int w = BAGS[v->carry[i]].w, h = BAGS[v->carry[i]].h;
+            sprite_bag_t sp = pass ? BAGS[v->carry[i]].fill : BAGS[v->carry[i]].edge;
+            push(s, &sprite_bag[sp], 0, CARRY_HANDS[i] - w / 2 - BAG_AT_X, CARRY_Y + h - BAG_AT_Y);
+        }
+        for (int i = 0; i < v->bag_count && i < PET_BAGS_MAX; i++) {
+            if (!bag_ok(v, i)) continue;
+            sprite_bag_t sp = pass ? BAGS[v->bags[i]].fill : BAGS[v->bags[i]].edge;
+            push(s, &sprite_bag[sp], 0, BAG_SLOTS[i].x - BAG_AT_X, BAG_SLOTS[i].by - BAG_AT_Y);
+        }
+    }
+    for (int i = 0; i < v->carry_count && i < PET_BAGS_CARRIED; i++) {
+        push(s, &sprite_bag[SPRITE_BAG_FINGERS], 0, CARRY_HANDS[i] - CARRY_HANDS[0], 0);
+    }
+
     // His mood in the scene: a rain cloud at no hearts, sparkles at full.
     if (v->happiness <= 0 && v->mood != PET_MOOD_ASLEEP) push(s, &sprite_fx[SPRITE_FX_RAIN], t, 0, 0);
     if (v->happiness >= PET_HAPPINESS_MAX) push(s, &sprite_fx[SPRITE_FX_SPARKLE], t, 0, 0);
@@ -327,6 +381,24 @@ void scene_hud_init(scene_hud_t *hud)
     *hud = (scene_hud_t){.last_happiness = -1};
 }
 
+void scene_hud_poof(scene_hud_t *hud, const pet_view_t *v, int i, uint32_t t)
+{
+    if (!bag_ok(v, i)) return;
+    int slot = 0;  // a free one, else the oldest
+    for (int k = 0; k < SCENE_POOFS; k++) {
+        if (!hud->poofs[k].on) {
+            slot = k;
+            break;
+        }
+        if (hud->poofs[k].tick < hud->poofs[slot].tick) slot = k;
+    }
+    int w = BAGS[v->bags[i]].w, h = BAGS[v->bags[i]].h;
+    hud->poofs[slot].x = (int8_t)(BAG_SLOTS[i].x + w / 2);
+    hud->poofs[slot].y = (int8_t)(BAG_SLOTS[i].by - h / 2);
+    hud->poofs[slot].tick = t;
+    hud->poofs[slot].on = true;
+}
+
 void scene_hud_peek(scene_hud_t *hud, uint32_t t)
 {
     if (hud->peeking && t - hud->peek_tick < SCENE_PEEK_TICKS) {
@@ -351,6 +423,13 @@ static int peek_offset(uint32_t k)
 
 void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_time_t *time, uint32_t t)
 {
+    // Puffs where bags were tapped away.
+    for (int k = 0; k < SCENE_POOFS; k++) {
+        if (hud->poofs[k].on && t - hud->poofs[k].tick >= SCENE_POOF_TICKS) hud->poofs[k].on = false;
+        if (!hud->poofs[k].on) continue;
+        push(s, &sprite_fx[SPRITE_FX_POOF], t - hud->poofs[k].tick, hud->poofs[k].x - POOF_AT, hud->poofs[k].y - POOF_AT);
+    }
+
     // Pop-up heart when happiness changes. A new change restarts it.
     if (hud->last_happiness >= 0 && v->happiness != hud->last_happiness) {
         hud->popping = true;

@@ -14,7 +14,11 @@ Back to front:
 3. `body/` Tomo in an outfit or pose, outline and hair included
 4. `face/` a face overlay, then `prop/` props, both at the body's head offset
 5. `front/` anything in front of him (the tub, the blanket)
-6. `hud/` the pop-up hearts, the emotes by his head (`emote_*`, drawn at
+6. `bag/` shopping bags on the floor or in his hands, placed by the scene
+   code. Each bag is a fill and an `_edge` outline, cut at its bottom-left
+   corner (2, 61); every edge is drawn before every fill so bags that
+   overlap share one outline.
+7. `hud/` the pop-up hearts, the emotes by his head (`emote_*`, drawn at
    1,1 inside their outline), and the peek strip (clock digits, colon,
    hearts), placed by the scene code at offsets from where they sit in the
    PNG. The strip's dark band and the speech bubble are drawn in code; the

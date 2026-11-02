@@ -21,7 +21,9 @@ static const char *TAG = "screen";
 static lv_obj_t *s_canvas;
 static QueueHandle_t s_events;
 static const char *s_last_line;  // to log each speech line once
-static scene_hud_t s_hud;          // pop-up hearts and the peek strip
+static scene_hud_t s_hud;          // pop-up hearts, poofs and the peek strip
+static pet_view_t s_view;          // the last frame drawn, to hit-test bag taps
+static uint32_t s_tick;            // and its tick
 
 // RGB565 canvas buffer: 52 * 64 * 2 bytes, about 6.6 KB.
 LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FORMAT_RGB565);
@@ -30,7 +32,8 @@ LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FOR
 // A tap waits briefly in case a second one makes it a double-tap (turn him
 // around). A long press opens the snack picker; while it is open, a tap on
 // the picker strip at the bottom picks the item under your finger (left,
-// middle or right third), and a tap anywhere else closes it. Swiping left or
+// middle or right third), and a tap anywhere else closes it. A tap on a
+// shopping bag puts it away at once (no double-tap wait). Swiping left or
 // right changes his outfit; swiping up changes the scene; swiping down peeks
 // at the clock and his hearts.
 
@@ -62,22 +65,40 @@ static void on_single_tap(lv_timer_t *t)
     post((pet_event_t){.type = PET_INPUT_TAP});
 }
 
+// Where a touch is, in art pixels (may be off the art).
+static void art_point(const lv_point_t *p, int *x, int *y)
+{
+    lv_area_t c;
+    lv_obj_get_coords(s_canvas, &c);
+    // The canvas is scaled about its centre.
+    int left = (c.x1 + c.x2 + 1) / 2 - SCREEN_ART_W * SCREEN_ART_SCALE / 2;
+    int top = (c.y1 + c.y2 + 1) / 2 - SCREEN_ART_H * SCREEN_ART_SCALE / 2;
+    int dx = p->x - left, dy = p->y - top;
+    *x = dx < 0 ? -1 : dx / SCREEN_ART_SCALE;
+    *y = dy < 0 ? -1 : dy / SCREEN_ART_SCALE;
+}
+
 static void on_tap(lv_event_t *e)
 {
     (void)e;
+    lv_point_t p;
+    lv_indev_get_point(lv_indev_active(), &p);
+    int ax, ay;
+    art_point(&p, &ax, &ay);
     if (s_menu_open) {
-        lv_point_t p;
-        lv_indev_get_point(lv_indev_active(), &p);
-        lv_area_t c;
-        lv_obj_get_coords(s_canvas, &c);
-        int art_top = (c.y1 + c.y2 + 1) / 2 - SCREEN_ART_H * SCREEN_ART_SCALE / 2;  // scaled about its centre
-        if (p.y < art_top + MENU_TOP_ART_Y * SCREEN_ART_SCALE) {
+        if (ay < MENU_TOP_ART_Y) {
             post((pet_event_t){.type = PET_INPUT_TAP});  // tapped away: the pet closes it
             return;
         }
         int third = p.x * 3 / lv_display_get_horizontal_resolution(NULL);
         static const pet_item_t items[3] = {PET_ITEM_GUMMY, PET_ITEM_CRISPS, PET_ITEM_COFFEE};
         post((pet_event_t){.type = PET_INPUT_GIVE, .item = items[third < 0 ? 0 : third > 2 ? 2 : third]});
+        return;
+    }
+    int bag = scene_bag_at(&s_view, ax, ay);
+    if (bag >= 0) {  // put it away, with a puff
+        scene_hud_poof(&s_hud, &s_view, bag, s_tick);
+        post((pet_event_t){.type = PET_INPUT_CLEAR_BAG, .bag = bag});
         return;
     }
     if (s_tap_pending) {  // second tap in the window
@@ -362,6 +383,8 @@ void screen_draw(const pet_t *pet, uint32_t tick)
         scene_hud_peek(&s_hud, tick);
     }
     scene_time_t now = clock_now();
+    s_view = v;
+    s_tick = tick;
     scene_t scene;
     scene_build(&scene, &v, tick);
     scene_hud(&scene, &s_hud, &v, &now, tick);

@@ -117,6 +117,9 @@ static lines_t L_COMMUTE_TAP = {"…(headphones on)", "まだ?", "mind the gap."
 static lines_t L_COMMUTE_SHAKE = {"ugh. Central line.", "oi. personal space.", NULL};
 static lines_t L_WORK_TAP = {"working.", "仕事中", "don't touch the display.", "…needs more beige.", NULL};
 static lines_t L_WORK_SHAKE = {"the display!", "ちょっと!", NULL};
+static lines_t L_SHOP_HOME = {"…i only went for socks.", "retail therapy.", "買っちゃった", "it was on sale.", NULL};
+static lines_t L_BAGS_FULL = {"where is my floor.", "…床がない", NULL};
+static lines_t L_BAGS_CLEAR = {"much better.", "すっきり", NULL};
 static lines_t L_PHONE = {"one more reel.", "あと一本", NULL};
 static lines_t L_SWITCH = {"shh. boss fight.", "ちょっと待って", NULL};
 static lines_t L_BACK = {"…what.", "なに?", NULL};
@@ -199,6 +202,7 @@ void pet_init(pet_t *pet, uint32_t seed)
         .happiness = PET_HAPPINESS_START,
         .costume = PET_COSTUME_DRACULA,
         .device = PET_DEVICE_PHONE,
+        .screen_on = true,
         .rng = seed ? seed : 0x7011u,
     };
 }
@@ -292,6 +296,102 @@ static void disturb_sulk_bath(pet_t *pet, uint32_t now_ms)
     pet->sulk_bath_since_ms = time_reached(now_ms, later) ? later : now_ms;
 }
 
+// --- Shopping ------------------------------------------------------------------
+// Bags show on the floor at home, in the rooms that have one in view: not
+// at work, on the train, in me-time or in bed. They stay put meanwhile.
+
+static bool bags_shown(const pet_t *pet)
+{
+    switch (current_mood(pet)) {
+    case PET_MOOD_DEADPAN:
+    case PET_MOOD_GRUMPY:
+    case PET_MOOD_NIGHT:
+    case PET_MOOD_SPOOKY: return true;
+    default: return false;
+    }
+}
+
+// Back from the shops with 1 to PET_BAGS_PER_TRIP random bags.
+static void go_shopping(pet_t *pet)
+{
+    int n = 1 + (int)(next_rand(pet) % PET_BAGS_PER_TRIP);
+    for (int i = 0; i < n && pet->bought_count < PET_BAGS_MAX; i++) {
+        pet->bought[pet->bought_count++] = (pet_bag_t)(next_rand(pet) % PET_BAG_COUNT);
+    }
+}
+
+// Notice shopping trips: weekends out of the house for a while, and some
+// weekdays on the way home from work. `mood` is from the clock and Wi-Fi,
+// before the charger's me-time.
+static void watch_for_shopping(pet_t *pet, const pet_clock_t *clock, pet_mood_t mood, uint32_t now_ms)
+{
+    if (is_weekend(clock)) {
+        bool gone = pet->place == PET_PLACE_AWAY || pet->place == PET_PLACE_COMMUTING;
+        if (gone && !pet->out && mood != PET_MOOD_ASLEEP) {
+            pet->out = true;
+            pet->out_since_ms = now_ms;
+        }
+    }
+    if (pet->place == PET_PLACE_HOME && pet->out) {
+        pet->out = false;
+        if (now_ms - pet->out_since_ms >= PET_SHOP_TRIP_MS) go_shopping(pet);
+    }
+
+    // Weekdays: once he's off the train home (or the Wi-Fi says he's home
+    // early), on a day he went to work. Booting in the evening doesn't count.
+    if (is_weekend(clock)) return;
+    int m = clock->hour * 60 + clock->minute;
+    pet_mood_t planned = pet_mood_for(clock);
+    if ((planned == PET_MOOD_WORK || planned == PET_MOOD_COMMUTE) && m >= 7 * 60) {
+        pet->worked_mday = (uint8_t)clock->mday;
+    }
+    bool home = m >= 15 * 60 + 30 && mood != PET_MOOD_COMMUTE;
+    if (home && pet->worked_mday == clock->mday && pet->home_mday != clock->mday) {
+        pet->home_mday = (uint8_t)clock->mday;
+        if (next_rand(pet) % 100 < PET_SHOP_AFTER_WORK_PCT) go_shopping(pet);
+    }
+}
+
+// Walk in with new bags when you can see it, then put them down. Returns
+// true if anything visible changed.
+static bool carry_bags_in(pet_t *pet, uint32_t now_ms)
+{
+    if (pet->carrying) {
+        if (!time_reached(now_ms, pet->carry_until_ms)) return false;
+        pet->carrying = false;
+        for (int i = 0; i < pet->bought_count && pet->bag_count < PET_BAGS_MAX; i++) {
+            pet->bags[pet->bag_count++] = pet->bought[i];
+        }
+        pet->bought_count = 0;
+        if (pet->bag_count > PET_BAGS_MESSY && bags_shown(pet)) {
+            say(pet, pick(pet, L_BAGS_FULL), PET_FACE_ANNOYED, 18, now_ms);
+        }
+        return true;
+    }
+    if (pet->bought_count == 0 || !pet->screen_on || !bags_shown(pet) || pet->sulking || pet->menu_open) {
+        return false;
+    }
+    pet->carrying = true;
+    pet->carry_until_ms = now_ms + 24 * FRAME_MS;
+    pet->back = false;
+    say(pet, pick(pet, L_SHOP_HOME), PET_FACE_SMIRK, 22, now_ms);
+    return true;
+}
+
+// Tapped a bag on the floor: it's put away. A clear floor is worth a heart.
+static void on_clear_bag(pet_t *pet, int index, uint32_t now_ms)
+{
+    if (!bags_shown(pet) || pet->carrying || index < 0 || index >= pet->bag_count) {
+        return;
+    }
+    for (int i = index; i + 1 < pet->bag_count; i++) pet->bags[i] = pet->bags[i + 1];
+    pet->bag_count--;
+    if (pet->bag_count == 0) {
+        if (!pet->sulking) say(pet, pick(pet, L_BAGS_CLEAR), PET_FACE_SMIRK, 16, now_ms);
+        add_happiness(pet, 1, now_ms);
+    }
+}
+
 // --- Time ----------------------------------------------------------------------
 
 void pet_set_place(pet_t *pet, pet_place_t place)
@@ -302,6 +402,11 @@ void pet_set_place(pet_t *pet, pet_place_t place)
 void pet_set_charging(pet_t *pet, bool charging)
 {
     pet->charging = charging;
+}
+
+void pet_set_screen_on(pet_t *pet, bool on)
+{
+    pet->screen_on = on;
 }
 
 bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms)
@@ -316,6 +421,9 @@ bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms)
         } else if (pet->place == PET_PLACE_HOME && mood == PET_MOOD_COMMUTE) {
             mood = PET_MOOD_DEADPAN;
         }
+    }
+    watch_for_shopping(pet, clock, mood, now_ms);
+    if (mood != PET_MOOD_ASLEEP) {
         if (pet->charging) {  // on the charger: me-time, wherever he is
             mood = PET_MOOD_ME_TIME;
             scene = me_time_scene(clock);
@@ -346,10 +454,16 @@ bool pet_tick(pet_t *pet, const pet_clock_t *clock, uint32_t now_ms)
         changed = true;
     }
 
-    // Left alone too long, he gets less happy. Not while asleep or sulking.
+    if (carry_bags_in(pet, now_ms)) {
+        changed = true;
+    }
+
+    // Left alone too long, he gets less happy, twice as fast with bags all
+    // over the floor. Not while asleep or sulking.
+    uint32_t ignored_ms = pet->bag_count > PET_BAGS_MESSY ? PET_IGNORED_MS / 2 : PET_IGNORED_MS;
     if (current_mood(pet) == PET_MOOD_ASLEEP || pet->sulking) {
         pet->last_care_ms = now_ms;
-    } else if (now_ms - pet->last_care_ms >= PET_IGNORED_MS) {
+    } else if (now_ms - pet->last_care_ms >= ignored_ms) {
         pet->last_care_ms = now_ms;
         add_happiness(pet, -1, now_ms);
         changed = true;
@@ -593,6 +707,7 @@ bool pet_handle_event(pet_t *pet, pet_event_t event, uint32_t now_ms)
     case PET_INPUT_GIVE: on_give(pet, event.item, now_ms); return true;
     case PET_INPUT_SWIPE: on_swipe(pet, event.direction, now_ms); return true;
     case PET_INPUT_SWIPE_UP: on_swipe_up(pet, now_ms); return true;
+    case PET_INPUT_CLEAR_BAG: on_clear_bag(pet, event.bag, now_ms); return true;
     }
     return false;
 }
@@ -658,6 +773,14 @@ pet_view_t pet_view(const pet_t *pet)
     v.back = can_turn(pet) && (pet->back || (pet->sulking && !pet->sulk_bathing));
     if (v.back && v.mood == PET_MOOD_ME_TIME) {
         v.outfit = PET_OUTFIT_BATH;  // stands up out of the tub
+    }
+
+    // Shopping bags: in his hands as he walks in, then on the floor.
+    if (pet->carrying) {
+        for (int i = 0; i < pet->bought_count && i < PET_BAGS_CARRIED; i++) v.carry[v.carry_count++] = pet->bought[i];
+    } else if (bags_shown(pet)) {
+        for (int i = 0; i < pet->bag_count; i++) v.bags[v.bag_count++] = pet->bags[i];
+        if (v.bag_count > PET_BAGS_MESSY && v.face == PET_FACE_BLANK) v.face = PET_FACE_ANNOYED;  // where is my floor
     }
 
     if (pet->reacting) {

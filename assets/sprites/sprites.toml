@@ -14,9 +14,11 @@ front = ["tub", "blanket", "bath_arm"]
 # Peek strip (clock, hearts), pop-up hearts, and the emotes by his head
 # (art at 1,1 inside its outline). Drawn by scene code at offsets.
 hud = ["digits", "colon", "heart", "heart_empty", "pop_up", "pop_down", "pop_down_beach", "emote_vein", "emote_heart", "emote_note", "emote_swirl", "emote_bang", "emote_dots", "emote_zzz"]
-# Shopping bags on the floor (art at BAG_AT 2,61: bottom-left corner), and
-# his fingers over the handles while he carries them in. Placed by scene code.
-bag = ["paper", "fashion", "tote", "gummy", "shoebox", "fingers"]
+# Shopping bags (art at 2,61: bottom-left corner), each as its fill and its
+# outline so overlapping bags share one outline: draw the edges, then the
+# fills. And his fingers over the handles while he carries them in. Placed by
+# scene code.
+bag = ["paper", "fashion", "tote", "gummy", "shoebox", "paper_edge", "fashion_edge", "tote_edge", "gummy_edge", "shoebox_edge", "fingers"]
 
 # Faces and props are drawn at the body's head offset. Bodies not listed
 # use [0, 0]. Lying poses have the head further left and lower.
