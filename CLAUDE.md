@@ -23,4 +23,4 @@ Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/age
 - The ESP32-C6 has no PSRAM: never allocate a full 368x448 frame, even though the S3 has PSRAM. Art is drawn on a 52x64 canvas scaled 7x.
 - Keep `firmware/components/pet` free of ESP-IDF/hardware includes so `tests/host` can build it. Run the host tests after changing it.
 - Art lives in `assets/sprites/` as PNGs. After changing them run `python tools/sprites/build.py` and commit the generated C too; CI checks it. See `assets/sprites/README.md` and `docs/adr/0002-sprite-pipeline.md`.
-- Keep `firmware/components/sprites` and `firmware/components/scene` hardware-free too; their tests are in `tests/host`. Animation timing lives in `scene`, not `pet`.
+- Keep `firmware/components/sprites`, `firmware/components/scene`, `firmware/components/wake` and `firmware/components/imu_guard` hardware-free too; their tests are in `tests/host`. Animation timing lives in `scene`, not `pet`.

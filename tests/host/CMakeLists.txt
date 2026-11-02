@@ -39,3 +39,9 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../firmware/components/wake wake
 add_executable(test_wake test_wake.c)
 target_link_libraries(test_wake PRIVATE wake)
 add_test(NAME wake COMMAND test_wake)
+
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../firmware/components/imu_guard imu_guard)
+
+add_executable(test_imu_guard test_imu_guard.c)
+target_link_libraries(test_imu_guard PRIVATE imu_guard)
+add_test(NAME imu_guard COMMAND test_imu_guard)
