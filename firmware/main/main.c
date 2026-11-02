@@ -140,11 +140,6 @@ void app_main(void)
         }
         pet_set_place(&pet, net_place(now_ms()));
         clock = local_clock();
-#if CONFIG_TOMO_DEBUG_BAGS
-        if (pet.bag_count == 0 && pet.bought_count == 0 && !pet.carrying) {
-            pet_go_shopping(&pet);  // keep the floor stocked for testing
-        }
-#endif
         pet_tick(&pet, &clock, now_ms());
         screen_draw(&pet, tick++);
         next_frame += pdMS_TO_TICKS(SCENE_TICK_MS);
