@@ -14,8 +14,8 @@ from pathlib import Path
 from PIL import Image
 
 W, H = 52, 64
-SCENES, TICKS = 12, 66
-COLS, SCALE, PAD = 6, 3, 4
+SCENES, TICKS = 16, 66
+COLS, SCALE, PAD = 8, 3, 4
 REPO = Path(__file__).resolve().parents[2]
 TICK_MS = 110
 

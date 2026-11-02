@@ -18,7 +18,7 @@ extern "C" {
 #define SCENE_W 52
 #define SCENE_H 64
 #define SCENE_TICK_MS 110  // about 9 fps, like the mockup
-#define SCENE_MAX_LAYERS 30  // scene (up to ~13) plus the HUD (up to 14)
+#define SCENE_MAX_LAYERS 44  // scene (up to ~13), bags (up to 10), the HUD (up to 15)
 
 typedef struct {
     const sprite_t *sprite;
@@ -59,6 +59,8 @@ void scene_build(scene_t *out, const pet_view_t *view, uint32_t tick);
 #define SCENE_PEEK_ROWS 9    // strip height in art pixels, divider included
 #define SCENE_PAGE_TICKS 9   // a long line shows 2 rows at a time, ~1 s each
 #define SCENE_BUBBLE_WRAP 46 // text width before wrapping, in art pixels
+#define SCENE_POOF_TICKS 6   // a tapped-away bag vanishes in a puff this long
+#define SCENE_POOFS 3        // puffs at once
 
 typedef struct {
     int last_happiness;  // -1 until the first frame
@@ -69,6 +71,11 @@ typedef struct {
     uint32_t peek_tick;
     const char *line;    // the line being said, to page through it
     uint32_t line_tick;
+    struct {
+        int8_t x, y;     // centre, in art pixels
+        bool on;
+        uint32_t tick;
+    } poofs[SCENE_POOFS];
 } scene_hud_t;
 
 // Local time for the clock. hour < 0 means unknown: no digits are drawn.
@@ -82,9 +89,17 @@ void scene_hud_init(scene_hud_t *hud);
 // for another full stretch, without sliding in again.
 void scene_hud_peek(scene_hud_t *hud, uint32_t tick);
 
+// Which of the shopping bags on the floor (view->bags) is at art pixel
+// (x, y), or -1. The topmost wins where they overlap.
+int scene_bag_at(const pet_view_t *view, int x, int y);
+
+// A puff where bag `index` of `view` was, as it's tapped away. Call before
+// the pet removes it.
+void scene_hud_poof(scene_hud_t *hud, const pet_view_t *view, int index, uint32_t tick);
+
 // Watch `view` for happiness changes and add the HUD on top of a built
 // scene: a pop-up heart if happiness just changed; his line in a speech
-// bubble with an emote by his head; a blinking anger mark while he sulks (or
+// bubble with an emote by his head; puffs from tapped-away bags; a blinking anger mark while he sulks (or
 // has no hearts) and isn't saying anything; and the peek strip with the
 // clock and five hearts if it is open. Call once per frame, after
 // scene_build and with the same tick.

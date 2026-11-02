@@ -625,6 +625,186 @@ static void test_sulking_on_the_couch_gets_him_up(void)
 
 // --- Misc ----------------------------------------------------------------------
 
+// --- Shopping bags -------------------------------------------------------------
+
+#define CARRY_MS (24u * 110u)
+
+static pet_event_t clear_bag(int i)
+{
+    return (pet_event_t){.type = PET_INPUT_CLEAR_BAG, .bag = i};
+}
+
+static void put_bags(pet_t *pet, int n)
+{
+    for (int i = 0; i < n; i++) pet->bags[i] = (pet_bag_t)(i % PET_BAG_COUNT);
+    pet->bag_count = (uint8_t)n;
+}
+
+static void test_weekend_shopping_trip_brings_bags_home(void)
+{
+    pet_t pet = pet_at(SAT, 14, 0);
+    pet_set_place(&pet, PET_PLACE_HOME);
+    tick(&pet, SAT, 14, 0, 1000);
+    pet_set_place(&pet, PET_PLACE_AWAY);
+    tick(&pet, SAT, 14, 5, 2000);
+    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);  // out doesn't change his mood
+    pet_set_place(&pet, PET_PLACE_COMMUTING);  // tube home: still the same trip
+    tick(&pet, SAT, 14, 30, 2000 + PET_SHOP_TRIP_MS - 1000);
+    pet_set_place(&pet, PET_PLACE_HOME);
+    uint32_t back = 2000 + PET_SHOP_TRIP_MS;
+    CHECK(tick(&pet, SAT, 14, 35, back));
+
+    // He walks in carrying them, with a line...
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.carry_count >= 1 && v.carry_count <= PET_BAGS_CARRIED);
+    CHECK(v.bag_count == 0 && v.line != NULL && v.face == PET_FACE_SMIRK);
+    int bought = pet.bought_count;
+    CHECK(bought >= 1 && bought <= PET_BAGS_PER_TRIP);
+    CHECK(!tick(&pet, SAT, 14, 35, back + CARRY_MS - 1) || pet_view(&pet).carry_count > 0);
+    // ...then puts them on the floor.
+    CHECK(tick(&pet, SAT, 14, 35, back + CARRY_MS));
+    v = pet_view(&pet);
+    CHECK(v.carry_count == 0 && v.bag_count == bought);
+    for (int i = 0; i < v.bag_count; i++) CHECK(v.bags[i] < PET_BAG_COUNT);
+}
+
+static void test_a_quick_pop_out_is_not_shopping(void)
+{
+    pet_t pet = pet_at(SAT, 14, 0);
+    pet_set_place(&pet, PET_PLACE_AWAY);
+    tick(&pet, SAT, 14, 0, 1000);
+    pet_set_place(&pet, PET_PLACE_HOME);
+    tick(&pet, SAT, 14, 10, 1000 + PET_SHOP_TRIP_MS - 1);
+    CHECK(pet.bought_count == 0 && pet_view(&pet).carry_count == 0);
+
+    // Weekdays out (at work) aren't shopping trips either.
+    pet = pet_at(TUE, 12, 0);
+    pet_set_place(&pet, PET_PLACE_AWAY);
+    tick(&pet, TUE, 12, 0, 1000);
+    pet_set_place(&pet, PET_PLACE_HOME);
+    tick(&pet, TUE, 14, 0, 1000 + 2 * PET_SHOP_TRIP_MS);
+    CHECK(pet.bought_count == 0);
+}
+
+static void test_some_weekdays_he_brings_bags_home_from_work(void)
+{
+    int with = 0, without = 0;
+    for (uint32_t seed = 1; seed <= 40; seed++) {
+        pet_t pet;
+        pet_init(&pet, seed);
+        tick(&pet, TUE, 14, 0, 0);
+        tick(&pet, TUE, 16, 0, 1000);  // on the train home
+        CHECK(pet.bought_count == 0);
+        tick(&pet, TUE, 17, 0, 2000);  // home: straight into the bath
+        pet_view_t v = pet_view(&pet);
+        CHECK(v.mood == PET_MOOD_ME_TIME && v.carry_count == 0 && v.bag_count == 0);
+        int bought = pet.bought_count;
+        bought ? with++ : without++;
+        tick(&pet, TUE, 18, 0, 3000);  // only once a day
+        CHECK(pet.bought_count == bought);
+        // He brings them in when you can see the floor: after the bath.
+        tick(&pet, TUE, 19, 30, 4000);
+        CHECK((pet_view(&pet).carry_count > 0) == (bought > 0));
+    }
+    CHECK(with > 5 && without > 5);
+
+    // Switched on in the evening: he didn't go to work as far as it knows.
+    pet_t pet = pet_at(TUE, 20, 0);
+    tick(&pet, TUE, 20, 5, 1000);
+    CHECK(pet.bought_count == 0);
+}
+
+static void test_home_early_from_work(void)
+{
+    // Home Wi-Fi during the commute home: he's home, so the bags come now.
+    int with = 0;
+    for (uint32_t seed = 1; seed <= 20; seed++) {
+        pet_t pet;
+        pet_init(&pet, seed);
+        tick(&pet, TUE, 15, 0, 0);
+        pet_set_place(&pet, PET_PLACE_HOME);
+        tick(&pet, TUE, 15, 40, 1000);
+        CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+        with += pet_view(&pet).carry_count > 0;
+    }
+    CHECK(with > 0);
+}
+
+static void test_bags_wait_for_the_screen(void)
+{
+    pet_t pet = pet_at(SAT, 14, 0);
+    pet_set_screen_on(&pet, false);
+    pet.bought[0] = PET_BAG_SHOEBOX;
+    pet.bought_count = 1;
+    tick(&pet, SAT, 14, 0, 1000);
+    CHECK(!pet.carrying);
+    pet_set_screen_on(&pet, true);
+    tick(&pet, SAT, 14, 0, 2000);
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.carry_count == 1 && v.carry[0] == PET_BAG_SHOEBOX);
+}
+
+static void test_bags_hidden_out_of_the_house_but_kept(void)
+{
+    pet_t pet = pet_at(TUE, 12, 0);  // work
+    put_bags(&pet, 3);
+    CHECK(pet_view(&pet).bag_count == 0);
+    pet_handle_event(&pet, clear_bag(0), 100);  // can't tap what isn't there
+    CHECK(pet.bag_count == 3);
+    tick(&pet, TUE, 18, 0, 200);  // bath
+    CHECK(pet_view(&pet).bag_count == 0);
+    tick(&pet, TUE, 23, 0, 300);  // bed
+    CHECK(pet_view(&pet).bag_count == 0);
+    tick(&pet, WED, 5, 30, 400);  // grumpy morning: there they are
+    CHECK(pet_view(&pet).bag_count == 3);
+    pet_handle_event(&pet, SWIPE, 500);  // spooky shows them too
+    CHECK(pet_view(&pet).bag_count == 3);
+}
+
+static void test_tap_bags_away_for_a_heart(void)
+{
+    pet_t pet = pet_at(SAT, 14, 0);
+    put_bags(&pet, 3);
+    pet.bags[0] = PET_BAG_PAPER;
+    pet.bags[1] = PET_BAG_TOTE;
+    pet.bags[2] = PET_BAG_GUMMY;
+    uint32_t pokes = pet.pokes;
+    pet_handle_event(&pet, clear_bag(1), 100);
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.bag_count == 2 && v.bags[0] == PET_BAG_PAPER && v.bags[1] == PET_BAG_GUMMY);  // shift down
+    CHECK(v.line == NULL && v.happiness == PET_HAPPINESS_START);
+    CHECK(pet.pokes == pokes);  // not a poke at him
+    pet_handle_event(&pet, clear_bag(5), 200);  // nothing there
+    CHECK(pet_view(&pet).bag_count == 2);
+    pet_handle_event(&pet, clear_bag(0), 300);
+    pet_handle_event(&pet, clear_bag(0), 400);
+    v = pet_view(&pet);
+    CHECK(v.bag_count == 0 && v.line != NULL && v.face == PET_FACE_SMIRK);
+    CHECK(v.happiness == PET_HAPPINESS_START + 1);
+}
+
+static void test_too_many_bags_annoy_him(void)
+{
+    pet_t pet = pet_at(SAT, 14, 0);
+    put_bags(&pet, PET_BAGS_MESSY);
+    CHECK(pet_view(&pet).face == PET_FACE_BLANK);
+    // Bringing more in fills the floor; he says so, and the rest don't fit.
+    pet.bought[0] = pet.bought[1] = pet.bought[2] = PET_BAG_FASHION;
+    pet.bought_count = 3;
+    tick(&pet, SAT, 14, 0, 1000);
+    CHECK(pet.carrying);
+    tick(&pet, SAT, 14, 0, 1000 + CARRY_MS);
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.bag_count == PET_BAGS_MAX && v.line != NULL && v.face == PET_FACE_ANNOYED);
+    tick(&pet, SAT, 14, 1, 1000 + CARRY_MS + 5000);
+    CHECK(pet_view(&pet).line == NULL && pet_view(&pet).face == PET_FACE_ANNOYED);  // still, at rest
+
+    // And ignored, he gets unhappy twice as fast.
+    uint32_t t0 = pet.last_care_ms;
+    tick(&pet, SAT, 15, 0, t0 + PET_IGNORED_MS / 2);
+    CHECK(pet_view(&pet).happiness == PET_HAPPINESS_START - 1);
+}
+
 static void test_same_seed_same_lines(void)
 {
     pet_t a = pet_at(SAT, 14, 0), b = pet_at(SAT, 14, 0);
@@ -804,6 +984,14 @@ int main(void)
     test_chosen_scene_lasts_until_bed();
     test_no_scene_swipe_while_asleep_or_sulking();
     test_sulking_on_the_couch_gets_him_up();
+    test_weekend_shopping_trip_brings_bags_home();
+    test_a_quick_pop_out_is_not_shopping();
+    test_some_weekdays_he_brings_bags_home_from_work();
+    test_home_early_from_work();
+    test_bags_wait_for_the_screen();
+    test_bags_hidden_out_of_the_house_but_kept();
+    test_tap_bags_away_for_a_heart();
+    test_too_many_bags_annoy_him();
     test_same_seed_same_lines();
     test_names();
     test_commuting_puts_him_on_the_train();

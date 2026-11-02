@@ -3,6 +3,7 @@
 // A tube network (see place_tfl_ssids) puts him on his commute, and he stays
 // there for PLACE_COMMUTE_HOLD_MS after the last one, because Wi-Fi is only in
 // the stations, not the tunnels. Seeing the home network ends that early.
+// Two scans in a row that see networks but not home mean he's out (AWAY).
 // Hardware-free, so the host tests can build it.
 #pragma once
 
@@ -27,6 +28,8 @@ typedef struct {
     uint32_t home_seen_ms;
     bool commuting;
     uint32_t tfl_seen_ms;    // last scan that saw a tube network
+    uint8_t home_misses;     // scans in a row that saw networks, but not home
+    uint32_t scan_ms;        // the last of those
 } place_t;
 
 void place_init(place_t *place, const char *home_ssid);

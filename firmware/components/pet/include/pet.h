@@ -55,6 +55,7 @@ typedef enum {
     PET_PLACE_UNKNOWN = 0,
     PET_PLACE_HOME,        // home network in range: not commuting, whatever the clock says
     PET_PLACE_COMMUTING,   // tube Wi-Fi seen recently: on the train
+    PET_PLACE_AWAY,        // out (scans see networks, not home): leaves the schedule in charge
     PET_PLACE_COUNT,
 } pet_place_t;
 
@@ -117,6 +118,17 @@ typedef enum {
     PET_DEVICE_COUNT,
 } pet_device_t;
 
+// Shopping bags he brings home. They pile up on the floor like tamagotchi
+// poop until you tap each one away.
+typedef enum {
+    PET_BAG_PAPER = 0,  // pastel paper bag
+    PET_BAG_FASHION,    // black boutique bag
+    PET_BAG_TOTE,       // canvas tote with a cute face
+    PET_BAG_GUMMY,      // clear bag of gummies
+    PET_BAG_SHOEBOX,
+    PET_BAG_COUNT,
+} pet_bag_t;
+
 // --- Input -------------------------------------------------------------------
 
 typedef enum {
@@ -127,12 +139,14 @@ typedef enum {
     PET_INPUT_GIVE,       // picked an item in the snack picker (see .item)
     PET_INPUT_SWIPE,      // change outfit (see .direction)
     PET_INPUT_SWIPE_UP,   // change scene: bath, couch, beach, then back
+    PET_INPUT_CLEAR_BAG,  // tapped a shopping bag on the floor (see .bag); not a poke
 } pet_input_t;
 
 typedef struct {
     pet_input_t type;
     pet_item_t item;  // PET_INPUT_GIVE only
     int direction;    // PET_INPUT_SWIPE only: +1 next costume, -1 previous
+    int bag;          // PET_INPUT_CLEAR_BAG only: index into pet_view_t.bags
 } pet_event_t;
 
 // --- Tuning ------------------------------------------------------------------
@@ -153,6 +167,18 @@ typedef struct {
 #define PET_POKES_PER_HEART 3
 // The snack picker closes itself after this long.
 #define PET_MENU_MS 6000u
+// Shopping. Floor space for this many bags; more than PET_BAGS_MESSY and he
+// minds (annoyed face, and he gets unhappy twice as fast when ignored).
+#define PET_BAGS_MAX 5
+#define PET_BAGS_MESSY 4
+// Each trip brings 1 to this many bags, of which he carries 2 in his hands.
+#define PET_BAGS_PER_TRIP 3
+#define PET_BAGS_CARRIED 2
+// Weekends: away from home (or on the tube) this long counts as a shopping
+// trip, and he comes home with bags.
+#define PET_SHOP_TRIP_MS (30u * 60u * 1000u)
+// Weekdays: the chance, in percent, that he brings bags home from work.
+#define PET_SHOP_AFTER_WORK_PCT 50
 
 // --- State -------------------------------------------------------------------
 
@@ -186,6 +212,21 @@ typedef struct {
     const char *react_line;
     uint32_t react_until_ms;
 
+    // Shopping bags: on the floor, and bought but not brought in yet. He
+    // carries new bags in the next time you can see him in a room that shows
+    // them, then puts them down.
+    pet_bag_t bags[PET_BAGS_MAX];
+    uint8_t bag_count;
+    pet_bag_t bought[PET_BAGS_MAX];
+    uint8_t bought_count;
+    bool carrying;             // walking in with bags (the reaction runs alongside)
+    uint32_t carry_until_ms;
+    bool out;                  // away from home (or on the tube) on a weekend...
+    uint32_t out_since_ms;     // ...since this long
+    uint8_t worked_mday;       // day of the month he was last at work (0: not yet)
+    uint8_t home_mday;         // day he last got home from work
+    bool screen_on;
+
     uint32_t rng;              // xorshift state for picking lines
     uint32_t pokes;            // lifetime tap count, for fun later
 } pet_t;
@@ -211,6 +252,14 @@ typedef struct {
     bool sulking;
     int happiness;            // 0..PET_HAPPINESS_MAX
     const char *line;         // UTF-8 speech bubble text, or NULL
+    // Shopping bags on the floor, in slot order. Only in rooms that show
+    // them (deadpan, grumpy, night, spooky); otherwise bag_count is 0.
+    pet_bag_t bags[PET_BAGS_MAX];
+    uint8_t bag_count;
+    // Bags in his hands as he walks in (left hand first); the floor bags are
+    // hidden meanwhile.
+    pet_bag_t carry[PET_BAGS_CARRIED];
+    uint8_t carry_count;
 } pet_view_t;
 
 // --- API ---------------------------------------------------------------------
@@ -232,6 +281,10 @@ void pet_set_place(pet_t *pet, pet_place_t place);
 // couch or beach at weekends), over the schedule and the commute. He still
 // sleeps at bedtime.
 void pet_set_charging(pet_t *pet, bool charging);
+
+// Tell him whether the screen is on, so he saves walking in with new shopping
+// bags until someone can see it. Starts on.
+void pet_set_screen_on(pet_t *pet, bool on);
 
 // React to an input. Returns true if the screen should redraw.
 bool pet_handle_event(pet_t *pet, pet_event_t event, uint32_t now_ms);

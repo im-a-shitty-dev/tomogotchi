@@ -127,9 +127,11 @@ BACK = {
     "bath_back": {"outfit": "bath", "back": True, "bathBack": True},
     "work_back": {"outfit": "work", "back": True},
 }
-# Shopping bags, each with its own outline, drawn from the bottom-left corner
-# at BAG_AT; the scene code moves them to their floor slots. "fingers" go
-# over the handles while he carries bags in (his hands are 21 px apart).
+# Shopping bags, drawn from the bottom-left corner at BAG_AT; the scene code
+# moves them to their floor slots. Each is cut as its fill and its outline
+# (<bag>_edge), so overlapping bags share one outline as in the mockup: the
+# scene draws every edge, then every fill. "fingers" go over the handles
+# while he carries bags in (his hands are 21 px apart).
 BAGS = ["paper", "fashion", "tote", "gummy", "shoebox"]
 BAG_AT = (2, 61)
 # Props in his hand (phone, morning coffee) and the morning bed hair, per body.
@@ -218,7 +220,7 @@ def write_manifest(out: Path, bodies, head_offsets, hand_offsets, overrides):
         "face = " + names(FACES),
         "prop = " + names(PROPS),
         'front = ["tub", "blanket", "bath_arm"]',
-        "bag = " + names([*BAGS, "fingers"]),
+        "bag = " + names([*BAGS, *(f"{b}_edge" for b in BAGS), "fingers"]),
         "",
         "# Faces and props are drawn at the body's head offset. Bodies not listed",
         "# use [0, 0]. Lying poses have the head further left and lower.",
@@ -276,6 +278,7 @@ def main():
         reqs += [{"name": f"{pose}:{f}", "kind": "lying", "pose": pose, "face": f} for f in FACES]
     reqs += [tomo(f"{b}:", o) for b, o in BACK.items()]
     reqs += [{"name": f"bag:{b}", "kind": "bag", "bag": b, "at": BAG_AT} for b in BAGS]
+    reqs += [{"name": f"bagfill:{b}", "kind": "bag", "bag": b, "at": BAG_AT, "noOutline": True} for b in BAGS]
     reqs.append({"name": "bag:fingers", "kind": "fingers"})
     for c in TAILED:
         for back in (False, True):
@@ -303,8 +306,11 @@ def main():
         files[f"fx/{name}"] = draw()
     for f in ("tub", "blanket", "bath_arm"):
         files[f"front/{f}"] = R[f"front:{f}"]
-    for b in [*BAGS, "fingers"]:
-        files[f"bag/{b}"] = R[f"bag:{b}"]
+    for b in BAGS:
+        fill = R[f"bagfill:{b}"]
+        files[f"bag/{b}"] = fill
+        files[f"bag/{b}_edge"] = [c if f is None else None for c, f in zip(R[f"bag:{b}"], fill)]
+    files["bag/fingers"] = R["bag:fingers"]
     # Snacks can be handed to any body, so each is drawn on its own with its
     # own outline, in his fingers at the standing hand (35, 46).
     for i in ITEMS:

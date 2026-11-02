@@ -99,6 +99,31 @@ static void test_no_home_configured(void)
     CHECK(place_now(&p, 0) == PET_PLACE_COMMUTING);
 }
 
+static void test_away_after_two_scans_without_home(void)
+{
+    place_t p;
+    place_init(&p, "TomoHome");
+    SCAN(&p, 0, "TomoHome");
+    SCAN(&p, 5 * MIN, "CoffeeShop");  // one miss could be a weak signal
+    CHECK(place_now(&p, 5 * MIN) == PET_PLACE_UNKNOWN);
+    SCAN(&p, 10 * MIN, "CoffeeShop", "Boutique");
+    CHECK(place_now(&p, 10 * MIN) == PET_PLACE_AWAY);
+    place_scan(&p, NULL, 0, 15 * MIN);  // empty scans don't count either way
+    CHECK(place_now(&p, 15 * MIN) == PET_PLACE_AWAY);
+    CHECK(place_now(&p, 10 * MIN + PLACE_HOME_HOLD_MS) == PET_PLACE_UNKNOWN);  // scanner stalled
+    SCAN(&p, 20 * MIN, "THREE_WIFI");  // the tube wins
+    CHECK(place_now(&p, 20 * MIN) == PET_PLACE_COMMUTING);
+    SCAN(&p, 25 * MIN, "TomoHome");
+    CHECK(place_now(&p, 25 * MIN) == PET_PLACE_HOME);
+    SCAN(&p, 30 * MIN, "CoffeeShop");
+    CHECK(place_now(&p, 30 * MIN) == PET_PLACE_UNKNOWN);
+
+    place_init(&p, NULL);  // no home network known: never away
+    SCAN(&p, 0, "CoffeeShop");
+    SCAN(&p, 5 * MIN, "CoffeeShop");
+    CHECK(place_now(&p, 5 * MIN) == PET_PLACE_UNKNOWN);
+}
+
 static void test_survives_clock_wrap(void)
 {
     place_t p;
@@ -119,6 +144,7 @@ int main(void)
     test_home_beats_hotspot_in_same_scan();
     test_no_home_configured();
     test_survives_clock_wrap();
+    test_away_after_two_scans_without_home();
 
     if (failures) {
         fprintf(stderr, "%d check(s) failed\n", failures);

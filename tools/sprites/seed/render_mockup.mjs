@@ -101,7 +101,7 @@ function render(req) {
     }
     // A tapped-away bag: 8 dots in a growing ring, k ticks in, round (20, 20).
     case 'poof': M.drawPoof(L, { x: 20, y: 20, t0: 0 }); break;
-    case 'bag': M.drawBag(L, req.bag, req.at[0], req.at[1]); L.outline(P.OL); break;
+    case 'bag': M.drawBag(L, req.bag, req.at[0], req.at[1]); if (!req.noOutline) L.outline(P.OL); break;
     // Fingers over the bag handles at his left hand (frame() draws them unoutlined).
     case 'fingers': L.rect(14, 46, 3, 2, P.S); break;
     // A snack in his fingers, at the standing hand point.

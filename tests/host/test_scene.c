@@ -185,6 +185,8 @@ static void test_every_view_builds(void)
                     v.bedhead = flags & 4;
                     v.item = flags & 8 ? PET_ITEM_CRISPS : PET_ITEM_NONE;
                     v.phone = flags & 16;
+                    v.bag_count = PET_BAGS_MAX;  // worst case: a full floor and full hands
+                    v.carry_count = PET_BAGS_CARRIED;
                     for (uint32_t t = 0; t < 3; t++) {
                         scene_build(&s, &v, t);
                         CHECK(s.count > 1 && s.count <= SCENE_MAX_LAYERS);
@@ -216,6 +218,82 @@ static void test_work_mannequin_changes_every_45_ticks(void)
     v.back = true;
     scene_build(&s, &v, 10);
     CHECK(body_layer(&s, SPRITE_BODY_WORK_BACK) != NULL);
+}
+
+#define SKIN 0xf6b7  // #f7d7bd in RGB565: his fingers
+#define RGB(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
+
+static void test_bags_on_the_floor(void)
+{
+    static uint16_t buf[SCENE_W * SCENE_H];
+    scene_t s;
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.bags[0] = PET_BAG_PAPER;    // slot (1, 59)
+    v.bags[1] = PET_BAG_SHOEBOX;  // slot (41, 59)
+    v.bag_count = 2;
+    scene_build(&s, &v, 2);
+    CHECK(find(&s, &sprite_bag[SPRITE_BAG_PAPER]) > find(&s, &sprite_body[SPRITE_BODY_CASUAL]));  // in front of him
+    scene_render(&s, buf, SCENE_W);
+    CHECK(buf[53 * SCENE_W + 1] == RGB(0xfb, 0xd9, 0xe3));   // the paper bag's folded top
+    CHECK(buf[58 * SCENE_W + 41] == RGB(0xf4, 0xef, 0xe2));  // the shoebox stripe
+    CHECK(buf[55 * SCENE_W + 40] == RGB(0xc9, 0x6a, 0x2a));  // its lid sticks out
+
+    // Taps: the hit box is a pixel bigger, except on top.
+    CHECK(scene_bag_at(&v, 1, 55) == 0);
+    CHECK(scene_bag_at(&v, 0, 60) == 0);
+    CHECK(scene_bag_at(&v, 8, 49) == 0);
+    CHECK(scene_bag_at(&v, 1, 48) == -1);
+    CHECK(scene_bag_at(&v, 45, 56) == 1);
+    CHECK(scene_bag_at(&v, 26, 30) == -1);  // that's him
+    // Overlapping slots: the later (front) bag wins.
+    v.bags[2] = PET_BAG_TOTE;  // slot (8, 62), its hit box from x=7
+    v.bag_count = 3;
+    CHECK(scene_bag_at(&v, 7, 58) == 2);
+    CHECK(scene_bag_at(&v, 6, 58) == 0);
+    v.bag_count = 0;
+    CHECK(scene_bag_at(&v, 1, 55) == -1);
+}
+
+static void test_carrying_bags_in(void)
+{
+    static uint16_t buf[SCENE_W * SCENE_H];
+    scene_t s;
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.phone = true;
+    v.carry[0] = PET_BAG_FASHION;  // 6x11 under his left hand (15, 46)
+    v.carry[1] = PET_BAG_GUMMY;    // 7x9 under his right (36, 46)
+    v.carry_count = 2;
+    scene_build(&s, &v, 0);
+    scene_render(&s, buf, SCENE_W);
+    for (int i = 0; i < 2; i++)
+        for (int y = 46; y < 48; y++)
+            for (int x = 14 + 21 * i; x < 17 + 21 * i; x++) CHECK(buf[y * SCENE_W + x] == SKIN);  // fingers over handles
+    CHECK(buf[(57 - 4) * SCENE_W + 12 + 2] == RGB(0xd9, 0xb4, 0x5a));  // fashion bag's gold tag: x 12, bottom 57
+    CHECK(buf[(55 - 1) * SCENE_W + 33 + 1] == RGB(0xff, 0x5d, 0x7a));  // a gummy: x 33, bottom 55
+}
+
+static void test_poof_where_a_bag_was(void)
+{
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    v.bags[0] = PET_BAG_TOTE;
+    v.bag_count = 1;
+    scene_hud_poof(&hud, &v, 0, 100);
+    scene_hud_poof(&hud, &v, 3, 100);  // no such bag: nothing
+    v.bag_count = 0;  // the pet put it away
+    for (uint32_t t = 100; t < 100 + SCENE_POOF_TICKS; t++) {
+        scene_build(&s, &v, t);
+        scene_hud(&s, &hud, &v, NULL, t);
+        int p = find(&s, &sprite_fx[SPRITE_FX_POOF]);
+        CHECK(p >= 0 && s.layers[p].frame == t - 100);
+        CHECK(s.layers[p].x == 1 + 3 - 20 && s.layers[p].y == 59 - 5 - 20);  // tote 7x11 at (1, 59)
+        CHECK(find(&s, &sprite_fx[SPRITE_FX_POOF]) == p);
+    }
+    scene_build(&s, &v, 100 + SCENE_POOF_TICKS);
+    scene_hud(&s, &hud, &v, NULL, 100 + SCENE_POOF_TICKS);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_POOF]) < 0);
 }
 
 static void test_diff_finds_the_changed_box(void)
@@ -663,7 +741,6 @@ static void test_tails_wag(void)
     for (int f = SPRITE_FX_TAIL_PIKACHU; f <= SPRITE_FX_RIBBONS_SYLVEON_BACK; f++) CHECK(find(&s, &sprite_fx[f]) < 0);
 }
 
-#define SKIN 0xf6b7  // #f7d7bd in RGB565: his fingers
 
 static void test_snacks_in_his_hand(void)
 {
@@ -742,6 +819,9 @@ int main(void)
     test_blink_redraws_only_the_eyes();
     test_mood_rain_and_sparkles();
     test_work_mannequin_changes_every_45_ticks();
+    test_bags_on_the_floor();
+    test_carrying_bags_in();
+    test_poof_where_a_bag_was();
     test_pop_up_hearts();
     test_peek_strip();
     test_peek_band_darkens_the_top();
