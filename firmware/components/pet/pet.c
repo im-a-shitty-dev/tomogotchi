@@ -320,11 +320,6 @@ static void go_shopping(pet_t *pet)
     }
 }
 
-void pet_go_shopping(pet_t *pet)
-{
-    go_shopping(pet);
-}
-
 // Notice shopping trips: weekends out of the house for a while, and some
 // weekdays on the way home from work. `mood` is from the clock and Wi-Fi,
 // before the charger's me-time.
