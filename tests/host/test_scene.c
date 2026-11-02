@@ -285,14 +285,14 @@ static void test_poof_where_a_bag_was(void)
     v.bag_count = 0;  // the pet put it away
     for (uint32_t t = 100; t < 100 + SCENE_POOF_TICKS; t++) {
         scene_build(&s, &v, t);
-        scene_hud(&s, &hud, &v, NULL, t);
+        scene_hud(&s, &hud, &v, NULL, NULL, t);
         int p = find(&s, &sprite_fx[SPRITE_FX_POOF]);
         CHECK(p >= 0 && s.layers[p].frame == t - 100);
         CHECK(s.layers[p].x == 1 + 3 - 20 && s.layers[p].y == 59 - 5 - 20);  // tote 7x11 at (1, 59)
         CHECK(find(&s, &sprite_fx[SPRITE_FX_POOF]) == p);
     }
     scene_build(&s, &v, 100 + SCENE_POOF_TICKS);
-    scene_hud(&s, &hud, &v, NULL, 100 + SCENE_POOF_TICKS);
+    scene_hud(&s, &hud, &v, NULL, NULL, 100 + SCENE_POOF_TICKS);
     CHECK(find(&s, &sprite_fx[SPRITE_FX_POOF]) < 0);
 }
 
@@ -356,7 +356,7 @@ static void test_mood_rain_and_sparkles(void)
 static void hud_frame(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_time_t *tm, uint32_t t)
 {
     scene_build(s, v, t);
-    scene_hud(s, hud, v, tm, t);
+    scene_hud(s, hud, v, tm, NULL, t);
 }
 
 static void test_pop_up_hearts(void)
@@ -471,6 +471,90 @@ static void test_peek_strip(void)
     CHECK(s.band_rows == SCENE_PEEK_ROWS);
     hud_frame(&s, &hud, &v, &tm, 340);
     CHECK(s.band_rows == SCENE_PEEK_ROWS);
+}
+
+static void test_peek_status(void)
+{
+    scene_t s;
+    scene_hud_t hud;
+    scene_hud_init(&hud);
+    pet_view_t v = view(PET_MOOD_DEADPAN);
+    scene_status_t st = {.wifi = true, .battery_pct = 80};
+
+    scene_build(&s, &v, 10);
+    scene_hud(&s, &hud, &v, NULL, &st, 10);
+    CHECK(!s.status_shown);  // strip closed: no battery
+    CHECK(find(&s, &sprite_hud[SPRITE_HUD_WIFI]) < 0);
+
+    scene_hud_peek(&hud, 10);
+    scene_build(&s, &v, 11);
+    scene_hud(&s, &hud, &v, NULL, &st, 11);  // sliding in
+    CHECK(s.status_shown && s.status_off == -6);
+    int w = find(&s, &sprite_hud[SPRITE_HUD_WIFI]);
+    CHECK(w >= 0 && s.layers[w].frame == 0 && s.layers[w].y == -6);
+
+    st.wifi = false;
+    scene_build(&s, &v, 13);
+    scene_hud(&s, &hud, &v, NULL, &st, 13);
+    w = find(&s, &sprite_hud[SPRITE_HUD_WIFI]);
+    CHECK(s.status_off == 0 && s.layers[w].frame == 1);
+
+    // Without a status there's no Wi-Fi and no battery.
+    scene_build(&s, &v, 14);
+    scene_hud(&s, &hud, &v, NULL, NULL, 14);
+    CHECK(!s.status_shown && find(&s, &sprite_hud[SPRITE_HUD_WIFI]) < 0);
+}
+
+#define BATT_GREEN 0x5e8b   // #5fd35f
+#define BATT_ORANGE 0xf507  // #f2a23a
+#define BATT_RED 0xea47     // #e8483a
+#define BATT_DARK 0x0021    // #07050b
+
+// Rows of the battery fill (fill column x 7) that are colour c.
+static int batt_rows(const uint16_t *b, uint16_t c)
+{
+    int n = 0;
+    for (int y = 0; y < SCENE_BATT_H; y++) n += b[y * SCENE_BATT_W + 7] == c;
+    return n;
+}
+
+static void test_battery(void)
+{
+    static uint16_t b[SCENE_BATT_W * SCENE_BATT_H];
+    scene_status_t st = {.battery_pct = 80};
+    scene_battery_draw(b, SCENE_BATT_W, &st, 0);
+    CHECK(b[0] == BATT_DARK);                          // backing
+    CHECK(b[2 * SCENE_BATT_W + 8] == 0xf77c);           // nub, #f4efe2
+    CHECK(batt_rows(b, BATT_GREEN) == 14);             // 80% of 18
+    CHECK(b[(5 + 3 + 17) * SCENE_BATT_W + 7] == BATT_GREEN);  // from the bottom
+
+    st.battery_pct = 50;
+    scene_battery_draw(b, SCENE_BATT_W, &st, 0);
+    CHECK(batt_rows(b, BATT_ORANGE) == 9);
+    st.battery_pct = 20;
+    scene_battery_draw(b, SCENE_BATT_W, &st, 0);
+    CHECK(batt_rows(b, BATT_ORANGE) == 4);
+    st.battery_pct = 19;
+    scene_battery_draw(b, SCENE_BATT_W, &st, 0);
+    CHECK(batt_rows(b, BATT_RED) == 3);
+    st.battery_pct = 0;
+    scene_battery_draw(b, SCENE_BATT_W, &st, 0);
+    CHECK(batt_rows(b, BATT_RED) == 1);  // always a sliver
+    st.battery_pct = -1;
+    scene_battery_draw(b, SCENE_BATT_W, &st, 0);
+    CHECK(batt_rows(b, BATT_RED) == 0 && batt_rows(b, BATT_GREEN) == 0);  // unknown: empty
+
+    // Charging: a white bolt, and the fill pulses every 4 ticks.
+    st = (scene_status_t){.battery_pct = 100, .charging = true};
+    scene_battery_draw(b, SCENE_BATT_W, &st, 0);
+    int white = 0;
+    for (int i = 0; i < SCENE_BATT_W * SCENE_BATT_H; i++) white += b[i] == 0xffff;
+    CHECK(white == 6 * (3 * 2) + 6 * 2);  // six 3x2 steps and one 6x2
+    CHECK(b[(5 + 20) * SCENE_BATT_W + 11] == BATT_GREEN);  // a fill pixel clear of the bolt
+    scene_battery_draw(b, SCENE_BATT_W, &st, 4);
+    CHECK(b[(5 + 20) * SCENE_BATT_W + 11] != BATT_GREEN && b[(5 + 20) * SCENE_BATT_W + 11] != BATT_DARK);
+    scene_battery_draw(b, SCENE_BATT_W, &st, 8);
+    CHECK(b[(5 + 20) * SCENE_BATT_W + 11] == BATT_GREEN);
 }
 
 static void test_peek_band_darkens_the_top(void)
@@ -824,6 +908,8 @@ int main(void)
     test_poof_where_a_bag_was();
     test_pop_up_hearts();
     test_peek_strip();
+    test_peek_status();
+    test_battery();
     test_peek_band_darkens_the_top();
     test_wrap();
     test_bubble_bottom_or_top();

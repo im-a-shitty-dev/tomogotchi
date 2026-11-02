@@ -22,6 +22,9 @@ esp_err_t screen_start(QueueHandle_t events);
 // screen_draw() does nothing and touches aren't read.
 void screen_set_on(bool on);
 
+// Wi-Fi and battery for the peek strip. Call whenever they're read; cheap.
+void screen_set_status(bool wifi, int battery_pct, bool charging);
+
 // Draw the pet at animation tick `tick` (one per SCENE_TICK_MS). Call every
 // tick; only the part of the screen that changed is sent to the panel.
 void screen_draw(const pet_t *pet, uint32_t tick);

@@ -159,6 +159,8 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
     s->dim = false;
     s->band_from = 0;
     s->band_rows = 0;
+    s->status_shown = false;
+    s->status_off = 0;
     s->bubble_text = NULL;
     s->bubble_at = 0;
 
@@ -421,7 +423,8 @@ static int peek_offset(uint32_t k)
     return off > 0 ? 0 : off < -SCENE_PEEK_ROWS ? -SCENE_PEEK_ROWS : off;
 }
 
-void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_time_t *time, uint32_t t)
+void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_time_t *time,
+               const scene_status_t *status, uint32_t t)
 {
     // Puffs where bags were tapped away.
     for (int k = 0; k < SCENE_POOFS; k++) {
@@ -449,6 +452,7 @@ void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_ti
     speech(s, hud, v, t);
 
     // Peek strip: clock on the left, hearts on the right, over a dark band.
+    // Wi-Fi and the battery sit between them.
     if (hud->peeking && t - hud->peek_tick >= SCENE_PEEK_TICKS) hud->peeking = false;
     if (!hud->peeking) {
         return;
@@ -465,8 +469,74 @@ void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *v, const scene_ti
         for (int i = 0; i < 4; i++) push(s, &sprite_hud[SPRITE_HUD_DIGITS], digits[i], slot[i], off);
         if (time->second % 2 == 0) push(s, &sprite_hud[SPRITE_HUD_COLON], 0, 0, off);
     }
+    if (status != NULL) {
+        push(s, &sprite_hud[SPRITE_HUD_WIFI], status->wifi ? 0 : 1, 0, off);  // lit, or grey with a cross
+        s->status_shown = true;
+        s->status_off = (int8_t)off;
+    }
     for (int i = 0; i < PET_HAPPINESS_MAX; i++) {
         push(s, &sprite_hud[i < v->happiness ? SPRITE_HUD_HEART : SPRITE_HUD_HEART_EMPTY], 0, i * 4, off);
+    }
+}
+
+// --- The peek strip's battery, in native screen pixels ------------------------
+// Matches drawNativeBattery in the design mockup: a 14x24 body with a 2px
+// border and a 6x3 nub, on a dark backing, filled from the bottom.
+
+#define BATT_DARK RGB565(0x07, 0x05, 0x0b)
+#define BATT_INK RGB565(0xf4, 0xef, 0xe2)
+#define BATT_PULSE_EVERY 4  // charging: the fill dims to 75% on alternate 4-tick stretches
+
+static void batt_rect(uint16_t *buf, int stride, int x, int y, int w, int h, uint16_t c)
+{
+    for (int j = y; j < y + h; j++) {
+        for (int i = x; i < x + w; i++) {
+            if (i >= 0 && i < SCENE_BATT_W && j >= 0 && j < SCENE_BATT_H) buf[j * stride + i] = c;
+        }
+    }
+}
+
+// 75% of colour (r, g, b) over the dark interior.
+static uint16_t batt_dimmed(int r, int g, int b)
+{
+    return RGB565((r * 3 + 0x07) / 4, (g * 3 + 0x05) / 4, (b * 3 + 0x0b) / 4);
+}
+
+void scene_battery_draw(uint16_t *buf, int stride, const scene_status_t *st, uint32_t t)
+{
+    const int bx = 2, by = 5, bw = 14, bh = 24;  // the body, inside the backing
+    batt_rect(buf, stride, 0, 0, SCENE_BATT_W, SCENE_BATT_H, BATT_DARK);
+    batt_rect(buf, stride, bx + 4, by - 3, 6, 3, BATT_INK);  // nub
+    batt_rect(buf, stride, bx, by, bw, bh, BATT_INK);
+    batt_rect(buf, stride, bx + 2, by + 2, bw - 4, bh - 4, BATT_DARK);
+
+    int pct = st->battery_pct;
+    if (pct >= 0) {
+        if (pct > 100) pct = 100;
+        int r, g, b;
+        if (pct > 50) {
+            r = 0x5f, g = 0xd3, b = 0x5f;  // green
+        } else if (pct >= 20) {
+            r = 0xf2, g = 0xa2, b = 0x3a;  // orange
+        } else {
+            r = 0xe8, g = 0x48, b = 0x3a;  // red
+        }
+        bool dim = st->charging && (t / BATT_PULSE_EVERY) % 2;
+        uint16_t c = dim ? batt_dimmed(r, g, b) : RGB565(r, g, b);
+        const int inner = bh - 6;
+        int lvl = (inner * pct + 50) / 100;
+        if (lvl < 1) lvl = 1;
+        batt_rect(buf, stride, bx + 3, by + 3 + inner - lvl, bw - 6, lvl, c);
+    }
+    if (st->charging) {  // a white bolt, outlined in the dark colour
+        static const int8_t bolt[7][4] = {{7, 4, 3, 2}, {6, 6, 3, 2}, {5, 8, 3, 2}, {4, 10, 6, 2},
+                                          {6, 12, 3, 2}, {5, 14, 3, 2}, {4, 16, 3, 2}};
+        for (int i = 0; i < 7; i++) {
+            batt_rect(buf, stride, bx + bolt[i][0] - 1, by + bolt[i][1] - 1, bolt[i][2] + 2, bolt[i][3] + 2, BATT_DARK);
+        }
+        for (int i = 0; i < 7; i++) {
+            batt_rect(buf, stride, bx + bolt[i][0], by + bolt[i][1], bolt[i][2], bolt[i][3], RGB565(0xff, 0xff, 0xff));
+        }
     }
 }
 

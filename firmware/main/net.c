@@ -203,3 +203,8 @@ pet_place_t net_place(uint32_t now_ms)
     taskEXIT_CRITICAL(&s_place_lock);
     return place;
 }
+
+bool net_connected(void)
+{
+    return s_connected;
+}

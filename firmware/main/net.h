@@ -6,6 +6,7 @@
 // at home or on the tube (see components/pet/include/place.h).
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "esp_err.h"
@@ -14,6 +15,9 @@
 // Call after the display is started (the RTC shares the BSP I2C bus).
 // Keeps going without Wi-Fi credentials: the scans still spot the tube.
 esp_err_t net_start(void);
+
+// Whether we're on the home Wi-Fi with an IP address. Thread-safe.
+bool net_connected(void);
 
 // Where he is now. `now_ms` is the same clock the pet uses. Thread-safe.
 pet_place_t net_place(uint32_t now_ms);
