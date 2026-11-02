@@ -730,6 +730,15 @@ static void test_home_early_from_work(void)
     CHECK(with > 0);
 }
 
+static void test_go_shopping_on_demand(void)
+{
+    pet_t pet = pet_at(SAT, 14, 0);
+    pet_go_shopping(&pet);
+    CHECK(pet.bought_count >= 1 && pet.bought_count <= PET_BAGS_PER_TRIP);
+    tick(&pet, SAT, 14, 0, 1000);
+    CHECK(pet_view(&pet).carry_count > 0);
+}
+
 static void test_bags_wait_for_the_screen(void)
 {
     pet_t pet = pet_at(SAT, 14, 0);
@@ -988,6 +997,7 @@ int main(void)
     test_a_quick_pop_out_is_not_shopping();
     test_some_weekdays_he_brings_bags_home_from_work();
     test_home_early_from_work();
+    test_go_shopping_on_demand();
     test_bags_wait_for_the_screen();
     test_bags_hidden_out_of_the_house_but_kept();
     test_tap_bags_away_for_a_heart();

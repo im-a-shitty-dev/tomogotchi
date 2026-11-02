@@ -286,6 +286,10 @@ void pet_set_charging(pet_t *pet, bool charging);
 // bags until someone can see it. Starts on.
 void pet_set_screen_on(pet_t *pet, bool on);
 
+// Send him shopping now: he comes back with 1 to PET_BAGS_PER_TRIP bags and
+// carries them in as usual. For testing; trips normally come from pet_tick().
+void pet_go_shopping(pet_t *pet);
+
 // React to an input. Returns true if the screen should redraw.
 bool pet_handle_event(pet_t *pet, pet_event_t event, uint32_t now_ms);
 
