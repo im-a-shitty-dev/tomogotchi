@@ -17,6 +17,7 @@ typedef enum {
     SPRITE_BG_NIGHT,
     SPRITE_BG_ASLEEP,
     SPRITE_BG_SPOOKY,
+    SPRITE_BG_WORK,
     SPRITE_BG_COUNT
 } sprite_bg_t;
 
@@ -52,6 +53,8 @@ typedef enum {
     SPRITE_BODY_BATH_BACK,
     SPRITE_BODY_COUCH_HAND,
     SPRITE_BODY_BEACH_HAND,
+    SPRITE_BODY_WORK,
+    SPRITE_BODY_WORK_BACK,
     SPRITE_BODY_COUNT
 } sprite_body_t;
 
@@ -113,6 +116,9 @@ typedef enum {
     SPRITE_FX_TAIL_TRIKE_BACK,
     SPRITE_FX_RIBBONS_SYLVEON,
     SPRITE_FX_RIBBONS_SYLVEON_BACK,
+    SPRITE_FX_MANNEQUIN,
+    SPRITE_FX_SHOP_SPARKLE,
+    SPRITE_FX_POOF,
     SPRITE_FX_COUNT
 } sprite_fx_t;
 
@@ -134,7 +140,17 @@ typedef enum {
     SPRITE_HUD_COUNT
 } sprite_hud_t;
 
-#define SPRITE_PALETTE_SIZE 180
+typedef enum {
+    SPRITE_BAG_PAPER,
+    SPRITE_BAG_FASHION,
+    SPRITE_BAG_TOTE,
+    SPRITE_BAG_GUMMY,
+    SPRITE_BAG_SHOEBOX,
+    SPRITE_BAG_FINGERS,
+    SPRITE_BAG_COUNT
+} sprite_bag_t;
+
+#define SPRITE_PALETTE_SIZE 217
 extern const uint16_t sprite_palette[SPRITE_PALETTE_SIZE];
 
 extern const sprite_t sprite_bg[SPRITE_BG_COUNT > 0 ? SPRITE_BG_COUNT : 1];
@@ -142,6 +158,7 @@ extern const sprite_t sprite_body[SPRITE_BODY_COUNT > 0 ? SPRITE_BODY_COUNT : 1]
 extern const sprite_t sprite_front[SPRITE_FRONT_COUNT > 0 ? SPRITE_FRONT_COUNT : 1];
 extern const sprite_t sprite_fx[SPRITE_FX_COUNT > 0 ? SPRITE_FX_COUNT : 1];
 extern const sprite_t sprite_hud[SPRITE_HUD_COUNT > 0 ? SPRITE_HUD_COUNT : 1];
+extern const sprite_t sprite_bag[SPRITE_BAG_COUNT > 0 ? SPRITE_BAG_COUNT : 1];
 
 // Where a body's head is, relative to the standard standing pose. Draw its
 // face and props shifted by this much.
@@ -158,7 +175,7 @@ const sprite_t *sprite_prop(sprite_body_t body, sprite_prop_t prop);
 
 // The speech-bubble font, sorted by code point. Look glyphs up with
 // sprite_glyph().
-#define SPRITE_GLYPH_COUNT 180
+#define SPRITE_GLYPH_COUNT 187
 extern const sprite_glyph_t sprite_glyphs[SPRITE_GLYPH_COUNT];
 
 #ifdef __cplusplus

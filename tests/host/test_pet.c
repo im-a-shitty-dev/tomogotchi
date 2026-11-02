@@ -65,8 +65,8 @@ static void test_weekday_schedule(void)
     CHECK(mood_at(TUE, 4, 59) == PET_MOOD_ASLEEP);
     CHECK(mood_at(TUE, 5, 0) == PET_MOOD_GRUMPY);
     CHECK(mood_at(TUE, 6, 0) == PET_MOOD_COMMUTE);
-    CHECK(mood_at(TUE, 7, 0) == PET_MOOD_DEADPAN);
-    CHECK(mood_at(TUE, 15, 29) == PET_MOOD_DEADPAN);
+    CHECK(mood_at(TUE, 7, 0) == PET_MOOD_WORK);
+    CHECK(mood_at(TUE, 15, 29) == PET_MOOD_WORK);
     CHECK(mood_at(TUE, 15, 30) == PET_MOOD_COMMUTE);
     CHECK(mood_at(TUE, 17, 0) == PET_MOOD_ME_TIME);
     CHECK(mood_at(TUE, 19, 30) == PET_MOOD_NIGHT);
@@ -110,14 +110,14 @@ static void test_me_time_scene(void)
     CHECK(pet_scene_for(&c) == PET_SCENE_COUCH);
     c.month = 7;
     CHECK(pet_scene_for(&c) == PET_SCENE_BEACH);
-    c = at(TUE, 12, 0);
+    c = at(SAT, 14, 0);
     CHECK(pet_scene_for(&c) == PET_SCENE_NONE);
 }
 
 static void test_tick_follows_the_clock(void)
 {
     pet_t pet = pet_at(TUE, 12, 0);
-    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+    CHECK(pet_view(&pet).mood == PET_MOOD_WORK);
     CHECK(!tick(&pet, TUE, 12, 1, 10));  // nothing to redraw
     CHECK(tick(&pet, TUE, 15, 30, 20));  // time to go home
     CHECK(pet_view(&pet).mood == PET_MOOD_COMMUTE);
@@ -155,9 +155,30 @@ static void test_view_per_mood(void)
 
 // --- Taps and shakes -----------------------------------------------------------
 
-static void test_tap_smirks_when_deadpan(void)
+static void test_at_work(void)
 {
     pet_t pet = pet_at(TUE, 12, 0);
+    pet_view_t v = pet_view(&pet);
+    CHECK(v.mood == PET_MOOD_WORK && v.outfit == PET_OUTFIT_WORK);
+    CHECK(!v.phone && v.face == PET_FACE_BLANK);  // no phone on the shop floor
+
+    pet_handle_event(&pet, TAP, 100);  // a poke: deadpan reply, no cost
+    v = pet_view(&pet);
+    CHECK(v.line != NULL && v.face == PET_FACE_BLANK);
+    CHECK(v.happiness == PET_HAPPINESS_START);
+
+    pet_handle_event(&pet, SHAKE, 2000);
+    v = pet_view(&pet);
+    CHECK(v.shake && v.face == PET_FACE_ANNOYED && v.happiness == PET_HAPPINESS_START - 1);
+
+    pet = pet_at(SAT, 12, 30);  // weekends: no work
+    CHECK(pet_view(&pet).mood != PET_MOOD_WORK);
+    CHECK(pet_mood_name(PET_MOOD_WORK)[0] == 'w');
+}
+
+static void test_tap_smirks_when_deadpan(void)
+{
+    pet_t pet = pet_at(SAT, 14, 0);
     CHECK(pet_handle_event(&pet, TAP, 100));
     pet_view_t v = pet_view(&pet);
     CHECK(v.face == PET_FACE_SMIRK);
@@ -189,7 +210,7 @@ static void test_fumbled_double_tap_in_the_bath_is_cheap(void)
 
 static void test_shake_makes_him_dizzy(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, SHAKE, 100);
     pet_view_t v = pet_view(&pet);
     CHECK(v.face == PET_FACE_DIZZY && v.shake);
@@ -198,23 +219,23 @@ static void test_shake_makes_him_dizzy(void)
 
 static void test_reaction_wears_off(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, TAP, 1000);
-    CHECK(!tick(&pet, TUE, 12, 0, 1100));
+    CHECK(!tick(&pet, SAT, 14, 0, 1100));
     CHECK(pet_view(&pet).line != NULL);
-    CHECK(tick(&pet, TUE, 12, 0, 1000 + 5000));
+    CHECK(tick(&pet, SAT, 14, 0, 1000 + 5000));
     CHECK(pet_view(&pet).line == NULL);
     CHECK(pet_view(&pet).face == PET_FACE_BLANK);
 }
 
 static void test_reaction_survives_clock_wrap(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     uint32_t start = UINT32_MAX - 100;
     pet_handle_event(&pet, TAP, start);
-    CHECK(!tick(&pet, TUE, 12, 0, start + 50));
+    CHECK(!tick(&pet, SAT, 14, 0, start + 50));
     CHECK(pet_view(&pet).line != NULL);
-    CHECK(tick(&pet, TUE, 12, 0, start + 5000));
+    CHECK(tick(&pet, SAT, 14, 0, start + 5000));
 }
 
 static void test_tap_in_spooky_swaps_costume(void)
@@ -240,7 +261,7 @@ static void test_tap_at_night_swaps_device(void)
 
 static void test_double_tap_turns_him_and_tap_turns_him_back(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, DOUBLE_TAP, 100);
     CHECK(pet_view(&pet).back);
     pet_handle_event(&pet, TAP, 200);
@@ -270,7 +291,7 @@ static void test_no_turning_when_asleep_or_lying_down(void)
 
 static void test_mood_change_turns_him_round(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, DOUBLE_TAP, 100);
     tick(&pet, TUE, 15, 30, 200);
     CHECK(!pet_view(&pet).back);
@@ -280,16 +301,16 @@ static void test_mood_change_turns_him_round(void)
 
 static void test_long_press_opens_snack_picker(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, LONG_PRESS, 100);
     CHECK(pet_view(&pet).menu_open);
-    CHECK(tick(&pet, TUE, 12, 0, 100 + PET_MENU_MS));
+    CHECK(tick(&pet, SAT, 14, 0, 100 + PET_MENU_MS));
     CHECK(!pet_view(&pet).menu_open);
 }
 
 static void test_tap_closes_snack_picker(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, LONG_PRESS, 100);
     pet_handle_event(&pet, TAP, 200);
     CHECK(!pet_view(&pet).menu_open);
@@ -327,7 +348,7 @@ static void test_morning_coffee_helps_most(void)
 
 static void test_happiness_is_capped(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     for (int i = 0; i < 10; i++) {
         pet_handle_event(&pet, give(PET_ITEM_GUMMY), 100 + i);
     }
@@ -347,10 +368,10 @@ static void test_snack_while_asleep(void)
 
 static void test_ignored_he_gets_less_happy(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
-    tick(&pet, TUE, 12, 0, PET_IGNORED_MS - 1);
+    pet_t pet = pet_at(SAT, 14, 0);
+    tick(&pet, SAT, 14, 0, PET_IGNORED_MS - 1);
     CHECK(pet_view(&pet).happiness == PET_HAPPINESS_START);
-    CHECK(tick(&pet, TUE, 12, 0, PET_IGNORED_MS));
+    CHECK(tick(&pet, SAT, 14, 0, PET_IGNORED_MS));
     CHECK(pet_view(&pet).happiness == PET_HAPPINESS_START - 1);
 }
 
@@ -363,16 +384,16 @@ static void test_no_decay_while_asleep(void)
 
 static void test_interaction_resets_decay(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, TAP, PET_IGNORED_MS - 10);
-    tick(&pet, TUE, 12, 0, PET_IGNORED_MS);
+    tick(&pet, SAT, 14, 0, PET_IGNORED_MS);
     CHECK(pet_view(&pet).happiness == PET_HAPPINESS_START);
 }
 
 // Drive happiness to zero with shakes.
 static pet_t sulking_pet(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     for (int i = 0; i < PET_HAPPINESS_START; i++) {
         pet_handle_event(&pet, SHAKE, 100 + i);
     }
@@ -408,14 +429,14 @@ static void test_sulk_ends_after_food_and_a_quiet_bath(void)
 
     // Poking him in the bath makes him wait a minute longer.
     uint32_t poked = 3000 + PET_SULK_BATH_MS - 1000;
-    tick(&pet, TUE, 12, 0, poked - 1);
+    tick(&pet, SAT, 14, 0, poked - 1);
     pet_handle_event(&pet, TAP, poked);
-    tick(&pet, TUE, 12, 0, 3000 + PET_SULK_BATH_MS);
+    tick(&pet, SAT, 14, 0, 3000 + PET_SULK_BATH_MS);
     CHECK(pet_view(&pet).sulking);
-    tick(&pet, TUE, 12, 0, 3000 + PET_SULK_BATH_MS + PET_SULK_POKE_MS - 1);
+    tick(&pet, SAT, 14, 0, 3000 + PET_SULK_BATH_MS + PET_SULK_POKE_MS - 1);
     CHECK(pet_view(&pet).sulking);
 
-    CHECK(tick(&pet, TUE, 12, 0, 3000 + PET_SULK_BATH_MS + PET_SULK_POKE_MS));
+    CHECK(tick(&pet, SAT, 14, 0, 3000 + PET_SULK_BATH_MS + PET_SULK_POKE_MS));
     v = pet_view(&pet);
     CHECK(!v.sulking && !v.back && v.mood == PET_MOOD_DEADPAN);
     CHECK(v.line != NULL);  // forgives you
@@ -428,9 +449,9 @@ static void test_pokes_in_the_sulk_bath_add_up_but_never_past_a_full_wait(void)
     CHECK(pet.sulk_bathing);
     // Lots of pokes straight away: still just one full wait from now.
     for (int i = 0; i < 20; i++) pet_handle_event(&pet, i % 2 ? SHAKE : TAP, 2000 + i);
-    tick(&pet, TUE, 12, 0, 2019 + PET_SULK_BATH_MS - 1);
+    tick(&pet, SAT, 14, 0, 2019 + PET_SULK_BATH_MS - 1);
     CHECK(pet_view(&pet).sulking);
-    tick(&pet, TUE, 12, 0, 2019 + PET_SULK_BATH_MS);
+    tick(&pet, SAT, 14, 0, 2019 + PET_SULK_BATH_MS);
     CHECK(!pet_view(&pet).sulking);
 }
 
@@ -448,7 +469,7 @@ static void test_no_sulk_from_sleepy_pokes(void)
 
 static void test_swipe_dresses_him_up_any_time(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, SWIPE, 100);
     pet_view_t v = pet_view(&pet);
     CHECK(v.mood == PET_MOOD_SPOOKY && v.outfit == PET_OUTFIT_COSTUME);
@@ -469,7 +490,7 @@ static void test_swipe_dresses_him_up_any_time(void)
 
 static void test_swiping_through_every_costume(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     for (int i = 0; i < PET_COSTUME_COUNT; i++) {
         pet_handle_event(&pet, SWIPE, 100 + i);
         CHECK(pet_view(&pet).costume == (pet_costume_t)i);
@@ -480,7 +501,7 @@ static void test_swiping_through_every_costume(void)
 
 static void test_costume_stays_on_through_the_day_and_off_for_bed(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, SWIPE, 100);
     tick(&pet, TUE, 18, 0, 200);
     CHECK(pet_view(&pet).mood == PET_MOOD_SPOOKY);
@@ -509,7 +530,7 @@ static void test_no_dressing_up_while_asleep(void)
 
 static void test_swipe_up_cycles_scenes_then_back_to_schedule(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, SWIPE_UP, 100);
     pet_view_t v = pet_view(&pet);
     CHECK(v.mood == PET_MOOD_ME_TIME && v.scene == PET_SCENE_BATH);
@@ -555,7 +576,7 @@ static void test_swipe_up_reaches_the_bath_on_a_lazy_sunday(void)
 
 static void test_swipe_up_takes_the_costume_off(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, SWIPE, 100);
     CHECK(pet_view(&pet).mood == PET_MOOD_SPOOKY);
     pet_handle_event(&pet, SWIPE_UP, 200);
@@ -567,14 +588,14 @@ static void test_swipe_up_takes_the_costume_off(void)
 
 static void test_chosen_scene_lasts_until_bed(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, SWIPE_UP, 100);
     tick(&pet, TUE, 15, 30, 200);  // commute time
     CHECK(pet_view(&pet).scene == PET_SCENE_BATH);
     tick(&pet, TUE, 21, 0, 300);
     CHECK(pet_view(&pet).mood == PET_MOOD_ASLEEP);
     tick(&pet, WED, 7, 0, 400);
-    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+    CHECK(pet_view(&pet).mood == PET_MOOD_WORK);
 }
 
 static void test_no_scene_swipe_while_asleep_or_sulking(void)
@@ -583,7 +604,7 @@ static void test_no_scene_swipe_while_asleep_or_sulking(void)
     pet_handle_event(&pet, SWIPE_UP, 100);
     CHECK(pet_view(&pet).mood == PET_MOOD_ASLEEP);
     tick(&pet, WED, 7, 0, 200);
-    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+    CHECK(pet_view(&pet).mood == PET_MOOD_WORK);
 
     pet = sulking_pet();
     pet_handle_event(&pet, SWIPE_UP, 1000);
@@ -592,7 +613,7 @@ static void test_no_scene_swipe_while_asleep_or_sulking(void)
 
 static void test_sulking_on_the_couch_gets_him_up(void)
 {
-    pet_t pet = pet_at(TUE, 12, 0);
+    pet_t pet = pet_at(SAT, 14, 0);
     pet_handle_event(&pet, SWIPE_UP, 100);
     pet_handle_event(&pet, SWIPE_UP, 200);  // couch
     for (int i = 0; i < PET_HAPPINESS_START; i++) {
@@ -606,7 +627,7 @@ static void test_sulking_on_the_couch_gets_him_up(void)
 
 static void test_same_seed_same_lines(void)
 {
-    pet_t a = pet_at(TUE, 12, 0), b = pet_at(TUE, 12, 0);
+    pet_t a = pet_at(SAT, 14, 0), b = pet_at(SAT, 14, 0);
     for (int i = 0; i < 5; i++) {
         pet_handle_event(&a, TAP, 100 + i);
         pet_handle_event(&b, TAP, 100 + i);
@@ -679,7 +700,7 @@ static void test_unknown_place_follows_the_schedule(void)
     tick(&pet, TUE, 10, 0, 1000);
     pet_set_place(&pet, PET_PLACE_UNKNOWN);
     CHECK(tick(&pet, TUE, 10, 0, 2000));
-    CHECK(pet_view(&pet).mood == PET_MOOD_DEADPAN);
+    CHECK(pet_view(&pet).mood == PET_MOOD_WORK);
 }
 
 static void test_costume_still_beats_the_train(void)
@@ -745,6 +766,7 @@ int main(void)
     test_me_time_scene();
     test_tick_follows_the_clock();
     test_view_per_mood();
+    test_at_work();
     test_tap_smirks_when_deadpan();
     test_tap_annoys_when_grumpy_and_costs_a_heart();
     test_fumbled_double_tap_in_the_bath_is_cheap();

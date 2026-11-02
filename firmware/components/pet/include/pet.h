@@ -36,6 +36,7 @@ typedef enum {
     PET_MOOD_ME_TIME,     // bath, couch + manga, or beach; dislikes pokes
     PET_MOOD_NIGHT,       // on the bed with phone or Switch, screen glow
     PET_MOOD_SPOOKY,      // dressed up in a costume: by swiping, Fri night, 31 Oct
+    PET_MOOD_WORK,        // weekdays: visual merchandiser on the shop floor, no phone
     PET_MOOD_COUNT,
 } pet_mood_t;
 
@@ -79,6 +80,7 @@ typedef enum {
     PET_OUTFIT_COSTUME,     // see pet_view_t.costume
     PET_OUTFIT_LYING,       // me-time on the couch or beach (see scene)
     PET_OUTFIT_HIDDEN,      // only his head shows: in the tub, or asleep
+    PET_OUTFIT_WORK,        // black tee, tape measure, lanyard and staff pass
     PET_OUTFIT_COUNT,
 } pet_outfit_t;
 

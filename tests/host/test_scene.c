@@ -193,6 +193,31 @@ static void test_every_view_builds(void)
                 }
 }
 
+static void test_work_mannequin_changes_every_45_ticks(void)
+{
+    scene_t s;
+    pet_view_t v = view(PET_MOOD_WORK);
+    v.outfit = PET_OUTFIT_WORK;
+    scene_build(&s, &v, 10);
+    CHECK(s.layers[0].sprite == &sprite_bg[SPRITE_BG_WORK]);
+    CHECK(body_layer(&s, SPRITE_BODY_WORK) != NULL);
+    CHECK(find(&s, sprite_prop(SPRITE_BODY_WORK, SPRITE_PROP_PHONE)) < 0);  // no phone at work
+    int m = find(&s, &sprite_fx[SPRITE_FX_MANNEQUIN]);
+    CHECK(m >= 0 && s.layers[m].frame == 0);
+    CHECK(find(&s, &sprite_fx[SPRITE_FX_SHOP_SPARKLE]) < 0);
+    scene_build(&s, &v, 45 * 3 + 1);  // next look, just changed: it glints
+    m = find(&s, &sprite_fx[SPRITE_FX_MANNEQUIN]);
+    CHECK(s.layers[m].frame == 3);
+    int g = find(&s, &sprite_fx[SPRITE_FX_SHOP_SPARKLE]);
+    CHECK(g >= 0 && s.layers[g].frame == 0);
+    scene_build(&s, &v, 45 * 5 + 4);  // round again; the glint has risen a pixel
+    CHECK(s.layers[find(&s, &sprite_fx[SPRITE_FX_MANNEQUIN])].frame == 0);
+    CHECK(s.layers[find(&s, &sprite_fx[SPRITE_FX_SHOP_SPARKLE])].frame == 1);
+    v.back = true;
+    scene_build(&s, &v, 10);
+    CHECK(body_layer(&s, SPRITE_BODY_WORK_BACK) != NULL);
+}
+
 static void test_diff_finds_the_changed_box(void)
 {
     static uint16_t a[SCENE_W * SCENE_H], b[SCENE_W * SCENE_H];
@@ -649,6 +674,7 @@ static void test_snacks_in_his_hand(void)
     struct { pet_mood_t mood; pet_scene_t scene; pet_outfit_t outfit; pet_costume_t costume; sprite_body_t body; } cases[] = {
         {PET_MOOD_DEADPAN, PET_SCENE_NONE, PET_OUTFIT_CASUAL, 0, SPRITE_BODY_CASUAL},
         {PET_MOOD_COMMUTE, PET_SCENE_NONE, PET_OUTFIT_COAT, 0, SPRITE_BODY_COAT},
+        {PET_MOOD_WORK, PET_SCENE_NONE, PET_OUTFIT_WORK, 0, SPRITE_BODY_WORK},
         {PET_MOOD_NIGHT, PET_SCENE_NONE, PET_OUTFIT_PJS, 0, SPRITE_BODY_PJS},
         {PET_MOOD_SPOOKY, PET_SCENE_NONE, PET_OUTFIT_COSTUME, PET_COSTUME_SYLVEON, SPRITE_BODY_SYLVEON},
         {PET_MOOD_SPOOKY, PET_SCENE_NONE, PET_OUTFIT_COSTUME, PET_COSTUME_DRACULA, SPRITE_BODY_DRACULA},
@@ -715,6 +741,7 @@ int main(void)
     test_diff_finds_the_changed_box();
     test_blink_redraws_only_the_eyes();
     test_mood_rain_and_sparkles();
+    test_work_mannequin_changes_every_45_ticks();
     test_pop_up_hearts();
     test_peek_strip();
     test_peek_band_darkens_the_top();

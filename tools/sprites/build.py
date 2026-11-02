@@ -35,7 +35,7 @@ OUT_C = OUT_DIR / "sprites_gen.c"
 FONT = ASSETS / "font" / "glyphs.json"
 GLYPH_ROWS = 11
 GLYPH_NAMES = {0x20: "space", 0x5C: "backslash"}  # keep the C comments readable and safe
-GROUPS = ["bg", "body", "face", "prop", "front", "fx", "hud"]
+GROUPS = ["bg", "body", "face", "prop", "front", "fx", "hud", "bag"]
 
 
 class SpriteError(Exception):

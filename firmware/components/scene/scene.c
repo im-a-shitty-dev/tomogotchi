@@ -17,6 +17,8 @@
 #define RIPPLE_EVERY 2   // Sylveon's ribbons: one frame every 2 ticks
 #define ANGER_EVERY 10   // the sulk anger mark shows on 7 ticks of every 10
 #define ANGER_ON 7
+#define MANNEQUIN_EVERY 45  // he restyles the mannequin every ~5 s...
+#define SPARKLE_LEN 6       // ...and it glints for 6 ticks (3 low, 3 a pixel up)
 
 #define RGB565(r, g, b) ((uint16_t)((((r) >> 3) << 11) | (((g) >> 2) << 5) | ((b) >> 3)))
 #define BUBBLE_FILL RGB565(0xfb, 0xfa, 0xf6)
@@ -59,6 +61,7 @@ static sprite_body_t body_for(const pet_view_t *v)
         if (v->item != PET_ITEM_NONE) return v->scene == PET_SCENE_BEACH ? SPRITE_BODY_BEACH_HAND : SPRITE_BODY_COUCH_HAND;
         return v->scene == PET_SCENE_BEACH ? SPRITE_BODY_BEACH : SPRITE_BODY_COUCH;
     case PET_OUTFIT_HIDDEN: return SPRITE_BODY_HEAD;
+    case PET_OUTFIT_WORK: return v->back ? SPRITE_BODY_WORK_BACK : SPRITE_BODY_WORK;
     default: return v->back ? SPRITE_BODY_CASUAL_BACK : SPRITE_BODY_CASUAL;
     }
 }
@@ -129,7 +132,7 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
     sprite_bg_t bg = SPRITE_BG_DEADPAN;
     int fx = -1, front = -1, behind = -1;
     int dx = 0, dy = (t / BOB_EVERY) % 2;  // idle bob
-    bool bath = false, zzz = false, bats = false;
+    bool bath = false, zzz = false, bats = false, shop = false;
 
     switch (v->mood) {
     case PET_MOOD_ASLEEP:
@@ -147,6 +150,7 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
         s->dim = t % DIM_EVERY == 0 || t % DIM_EVERY == 1 || t % DIM_EVERY == 4;
         break;
     case PET_MOOD_NIGHT: bg = SPRITE_BG_NIGHT; dy = 0; break;
+    case PET_MOOD_WORK: bg = SPRITE_BG_WORK; shop = true; break;
     case PET_MOOD_SPOOKY:
         bg = SPRITE_BG_SPOOKY;
         fx = SPRITE_FX_STARS;
@@ -184,6 +188,11 @@ void scene_build(scene_t *s, const pet_view_t *v, uint32_t t)
         // Two bats on one strip: the second slower, lower and further along.
         push(s, &sprite_fx[SPRITE_FX_BAT], t, 0, 0);
         push(s, &sprite_fx[SPRITE_FX_BAT], t * 7 / 10 + 28, 0, 7);
+    }
+    if (shop) {
+        // The mannequin's top cycles through his looks, with a glint at each change.
+        push(s, &sprite_fx[SPRITE_FX_MANNEQUIN], t / MANNEQUIN_EVERY, 0, 0);
+        if (t % MANNEQUIN_EVERY < SPARKLE_LEN) push(s, &sprite_fx[SPRITE_FX_SHOP_SPARKLE], t % MANNEQUIN_EVERY >= 3, 0, 0);
     }
     if (behind >= 0) {
         push(s, &sprite_front[behind], 0, 0, 0);
