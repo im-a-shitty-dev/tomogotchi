@@ -14,13 +14,16 @@ const src = readFileSync(html, 'utf8');
 const start = src.indexOf('const W = 52');
 const end = src.indexOf('const cv = document');
 const blanket = src.match(/function drawBlanket\(L\) \{[\s\S]*?\n\}/);
-if (start < 0 || end < 0 || !blanket) throw new Error('mockup layout changed; update render_mockup.mjs');
+const shopping = src.match(/\/\/ Shopping bags pile up[\s\S]*?\nconst BAG_MOODS[^\n]*\n/);
+if (start < 0 || end < 0 || !blanket || !shopping) throw new Error('mockup layout changed; update render_mockup.mjs');
 
 const code = `let t = 0, scene = 'bath';
 ${src.slice(start, end)}
 ${blanket[0]}
+${shopping[0]}
 return {
   W, H, P, Layer, drawItem, drawFingers, drawBathArm, drawTomo, drawScene, drawTub, drawBlanket, drawLying,
+  drawBag, drawPoof,
   HAND, LY_HAND, BATH_HAND,
   set: (tt, sc) => { t = tt; scene = sc; },
 };`;
@@ -90,6 +93,17 @@ function render(req) {
       for (const [x, y] of [[2, 37], [3, 35], [49, 36], [48, 34], [10, 35], [41, 34]]) L.px(x, y - (req.t % 2), '#9fd8ff');
       break;
     }
+    case 'shopsparkle': {
+      // The glint round the mannequin when its outfit changes (drawScene, work).
+      const t = req.t;
+      for (const [x, y] of [[41, 24], [51, 30], [43, 41], [50, 38]]) L.px(x, y - (t % 45 < 3 ? 0 : 1), '#fff6c8');
+      break;
+    }
+    // A tapped-away bag: 8 dots in a growing ring, k ticks in, round (20, 20).
+    case 'poof': M.drawPoof(L, { x: 20, y: 20, t0: 0 }); break;
+    case 'bag': M.drawBag(L, req.bag, req.at[0], req.at[1]); L.outline(P.OL); break;
+    // Fingers over the bag handles at his left hand (frame() draws them unoutlined).
+    case 'fingers': L.rect(14, 46, 3, 2, P.S); break;
     // A snack in his fingers, at the standing hand point.
     case 'item': {
       const [hx, hy] = M.HAND.stand;

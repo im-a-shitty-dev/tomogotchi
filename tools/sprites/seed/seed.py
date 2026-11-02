@@ -11,6 +11,7 @@ into the layers the firmware composites, then writes assets/sprites/:
     face/<body>/<face>.png face overlay where a body needs its own (masks)
     prop/<prop>.png        held props and snacks
     front/<name>.png       layers drawn over Tomo (tub, blanket)
+    bag/<name>.png         shopping bags, and his fingers for carrying them
     sprites.toml           the manifest build.py reads
 
 Overlays are "what changes": a face overlay holds exactly the pixels that
@@ -57,6 +58,7 @@ BACKGROUNDS = {
     "night": ("night", None),
     "asleep": ("asleep", None),
     "spooky": ("spooky", None),
+    "work": ("work", None),
 }
 # Animated parts of backgrounds: (background, mockup ticks to sample).
 # Each frame holds only the pixels that ever change, drawn over the background.
@@ -64,6 +66,9 @@ FX = {
     "waves": ("beach", range(0, 36, 3)),
     "tunnel": ("commute", range(40)),  # lights streak past, window tops flicker
     "stars": ("spooky", range(20)),    # twinkle
+    # The mannequin's top, one frame per look (it changes every 45 ticks).
+    # Sampled clear of the sparkle, which is its own strip.
+    "mannequin": ("work", range(10, 225, 45)),
 }
 # Free-moving bits drawn in code in the mockup, cut as strips: (kind, ticks).
 # The firmware decides where in the stack they go.
@@ -72,6 +77,8 @@ LOOSE_FX = {
     "zzz": ("zzz", range(30)),       # over the blanket
     "bat": ("bat", range(66)),       # one bat crossing the sky; drawn twice
     "splash": ("splash", range(2)),  # shaken in the bath
+    "shop_sparkle": ("shopsparkle", (0, 3)),  # round the mannequin when it changes
+    "poof": ("poof", range(6)),      # a tapped-away shopping bag, centred on POOF_AT
 }
 # New art drawn by code here rather than cut from the mockup.
 DRAWN_FX = {"foam": foam.frames}  # bubbles overflowing the tub
@@ -107,6 +114,8 @@ FRONT = {
     "pjs_switch": {"outfit": "pjs", "glow": True, "device": "switch"},
     # Head and shoulders only: in the bath, and tucked up in bed.
     "head": {"noBody": True},
+    # At work: visual merchandiser's tee, tape measure, lanyard. No phone.
+    "work": {"outfit": "work"},
 }
 # Reclining me-time poses, holding manga / a piña colada.
 LYING = ["couch", "beach"]
@@ -116,7 +125,13 @@ BACK = {
     "pjs_back": {"outfit": "pjs", "glow": True, "back": True},
     # Standing up in the bath, facing away. The tub goes in front.
     "bath_back": {"outfit": "bath", "back": True, "bathBack": True},
+    "work_back": {"outfit": "work", "back": True},
 }
+# Shopping bags, each with its own outline, drawn from the bottom-left corner
+# at BAG_AT; the scene code moves them to their floor slots. "fingers" go
+# over the handles while he carries bags in (his hands are 21 px apart).
+BAGS = ["paper", "fashion", "tote", "gummy", "shoebox"]
+BAG_AT = (2, 61)
 # Props in his hand (phone, morning coffee) and the morning bed hair, per body.
 HELD = {"phone": {"phone": True}, "cup": {"cup": True}, "bedhead": {"bedhead": True}}
 HELD_ON = {"casual": ["phone", "cup", "bedhead"], "coat": ["phone"]}
@@ -203,6 +218,7 @@ def write_manifest(out: Path, bodies, head_offsets, hand_offsets, overrides):
         "face = " + names(FACES),
         "prop = " + names(PROPS),
         'front = ["tub", "blanket", "bath_arm"]',
+        "bag = " + names([*BAGS, "fingers"]),
         "",
         "# Faces and props are drawn at the body's head offset. Bodies not listed",
         "# use [0, 0]. Lying poses have the head further left and lower.",
@@ -259,6 +275,8 @@ def main():
         reqs.append({"name": f"{pose}:", "kind": "lying", "pose": pose})
         reqs += [{"name": f"{pose}:{f}", "kind": "lying", "pose": pose, "face": f} for f in FACES]
     reqs += [tomo(f"{b}:", o) for b, o in BACK.items()]
+    reqs += [{"name": f"bag:{b}", "kind": "bag", "bag": b, "at": BAG_AT} for b in BAGS]
+    reqs.append({"name": "bag:fingers", "kind": "fingers"})
     for c in TAILED:
         for back in (False, True):
             reqs += [tomo(f"tail:{c}:{int(back)}:{k}", {"outfit": c, "back": back, "tailOnly": True, "tailFrame": k})
@@ -285,6 +303,8 @@ def main():
         files[f"fx/{name}"] = draw()
     for f in ("tub", "blanket", "bath_arm"):
         files[f"front/{f}"] = R[f"front:{f}"]
+    for b in [*BAGS, "fingers"]:
+        files[f"bag/{b}"] = R[f"bag:{b}"]
     # Snacks can be handed to any body, so each is drawn on its own with its
     # own outline, in his fingers at the standing hand (35, 46).
     for i in ITEMS:

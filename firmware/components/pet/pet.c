@@ -3,7 +3,7 @@
 #include <stddef.h>
 
 // --- Schedule ----------------------------------------------------------------
-// Weekdays: up at 5, commute, work, commute, me-time, bed by 9. Friday night
+// Weekdays: up at 5, commute, work (7 to 3:30), commute, me-time, bed by 9. Friday night
 // is horror night. Weekends: lie-in until almost noon, lazy Sunday, late
 // Saturday. All of 31 October is spooky while he's awake.
 
@@ -22,7 +22,7 @@ pet_mood_t pet_mood_for(const pet_clock_t *c)
         else if (m < AT(5, 0) || m >= AT(21, 0)) mood = PET_MOOD_ASLEEP;
         else if (m < AT(6, 0)) mood = PET_MOOD_GRUMPY;
         else if (m < AT(7, 0)) mood = PET_MOOD_COMMUTE;
-        else if (m < AT(15, 30)) mood = PET_MOOD_DEADPAN;
+        else if (m < AT(15, 30)) mood = PET_MOOD_WORK;
         else if (m < AT(17, 0)) mood = PET_MOOD_COMMUTE;
         else if (m < AT(19, 30)) mood = PET_MOOD_ME_TIME;
         else mood = PET_MOOD_NIGHT;
@@ -73,7 +73,7 @@ const char *pet_mood_name(pet_mood_t mood)
     static const char *const names[PET_MOOD_COUNT] = {
         [PET_MOOD_ASLEEP] = "asleep",   [PET_MOOD_GRUMPY] = "grumpy", [PET_MOOD_COMMUTE] = "commute",
         [PET_MOOD_DEADPAN] = "deadpan", [PET_MOOD_ME_TIME] = "me-time", [PET_MOOD_NIGHT] = "night",
-        [PET_MOOD_SPOOKY] = "spooky",
+        [PET_MOOD_SPOOKY] = "spooky",   [PET_MOOD_WORK] = "work",
     };
     if ((int)mood < 0 || mood >= PET_MOOD_COUNT) {
         return "unknown";
@@ -115,6 +115,8 @@ static lines_t L_ASLEEP_TAP = {"…ん?", "zzz…", NULL};
 static lines_t L_ASLEEP_SHAKE = {"うるさい…", "…what time is it", NULL};
 static lines_t L_COMMUTE_TAP = {"…(headphones on)", "まだ?", "mind the gap.", NULL};
 static lines_t L_COMMUTE_SHAKE = {"ugh. Central line.", "oi. personal space.", NULL};
+static lines_t L_WORK_TAP = {"working.", "仕事中", "don't touch the display.", "…needs more beige.", NULL};
+static lines_t L_WORK_SHAKE = {"the display!", "ちょっと!", NULL};
 static lines_t L_PHONE = {"one more reel.", "あと一本", NULL};
 static lines_t L_SWITCH = {"shh. boss fight.", "ちょっと待って", NULL};
 static lines_t L_BACK = {"…what.", "なに?", NULL};
@@ -374,6 +376,7 @@ static const char *const *tap_lines(pet_mood_t mood, pet_scene_t scene)
     case PET_MOOD_ME_TIME:
         return scene == PET_SCENE_COUCH ? L_COUCH_TAP : scene == PET_SCENE_BEACH ? L_BEACH_TAP : L_BATH_TAP;
     case PET_MOOD_ASLEEP: return L_ASLEEP_TAP;
+    case PET_MOOD_WORK: return L_WORK_TAP;
     default: return L_DEADPAN_TAP;
     }
 }
@@ -388,6 +391,7 @@ static const char *const *shake_lines(pet_mood_t mood, pet_scene_t scene)
     case PET_MOOD_ASLEEP: return L_ASLEEP_SHAKE;
     case PET_MOOD_SPOOKY: return L_SPOOKY_SHAKE;
     case PET_MOOD_NIGHT: return L_NIGHT_SHAKE;
+    case PET_MOOD_WORK: return L_WORK_SHAKE;
     default: return L_DEADPAN_SHAKE;
     }
 }
@@ -435,7 +439,7 @@ static void on_tap(pet_t *pet, uint32_t now_ms)
         say(pet, pick(pet, pet->device == PET_DEVICE_PHONE ? L_PHONE : L_SWITCH), PET_FACE_SCREEN, 14, now_ms);
         return;
     }
-    pet_face_t face = mood == PET_MOOD_DEADPAN ? PET_FACE_SMIRK : PET_FACE_ANNOYED;
+    pet_face_t face = mood == PET_MOOD_DEADPAN ? PET_FACE_SMIRK : mood == PET_MOOD_WORK ? PET_FACE_BLANK : PET_FACE_ANNOYED;
     say(pet, pick(pet, tap_lines(mood, scene)), face, 16, now_ms);
     if ((mood == PET_MOOD_ME_TIME || mood == PET_MOOD_GRUMPY) && ++pet->annoying_pokes >= PET_POKES_PER_HEART) {
         pet->annoying_pokes = 0;
@@ -642,6 +646,9 @@ pet_view_t pet_view(const pet_t *pet)
         break;
     case PET_MOOD_SPOOKY:
         v.outfit = PET_OUTFIT_COSTUME;
+        break;
+    case PET_MOOD_WORK:
+        v.outfit = PET_OUTFIT_WORK;  // no phone at work
         break;
     default:
         break;
