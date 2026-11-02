@@ -43,6 +43,11 @@ typedef struct {
     bool bubble_top;      // at the top with the tail down (his face is low)
     int8_t bubble_tail_x; // where the tail points
     uint16_t bubble_ticks;  // ticks since the line started, for paging
+    // The peek strip's battery is drawn by the screen in native pixels, over
+    // the scaled art (see scene_battery_draw). status_off is how far the strip
+    // is pushed up, in art pixels (0 = fully down), when status_shown.
+    bool status_shown;
+    int8_t status_off;
 } scene_t;
 
 // Build the layer stack for `view` at animation tick `tick` (one per
@@ -83,6 +88,13 @@ typedef struct {
     int hour, minute, second;
 } scene_time_t;
 
+// Wi-Fi and battery, for the peek strip. battery_pct is 0-100, or -1 if unknown.
+typedef struct {
+    bool wifi;
+    bool charging;
+    int battery_pct;
+} scene_status_t;
+
 void scene_hud_init(scene_hud_t *hud);
 
 // Open the peek strip (swipe down). If it is already open it stays open
@@ -101,9 +113,27 @@ void scene_hud_poof(scene_hud_t *hud, const pet_view_t *view, int index, uint32_
 // scene: a pop-up heart if happiness just changed; his line in a speech
 // bubble with an emote by his head; puffs from tapped-away bags; a blinking anger mark while he sulks (or
 // has no hearts) and isn't saying anything; and the peek strip with the
-// clock and five hearts if it is open. Call once per frame, after
+// clock, Wi-Fi bars and five hearts if it is open. With a `status`, the strip
+// also asks for the battery (s->status_shown). Call once per frame, after
 // scene_build and with the same tick.
-void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *view, const scene_time_t *time, uint32_t tick);
+void scene_hud(scene_t *s, scene_hud_t *hud, const pet_view_t *view, const scene_time_t *time,
+               const scene_status_t *status, uint32_t tick);
+
+// The peek strip's battery, in native screen pixels: the art is scaled 7x,
+// but the battery is drawn at 1x so its fill can move smoothly. It sits in the
+// strip between the Wi-Fi bars and the hearts (art x 26..29).
+#define SCENE_BATT_W 18  // the battery with its dark backing
+#define SCENE_BATT_H 31
+#define SCENE_BATT_SCALE 7  // screen pixels per art pixel it assumes
+// Top-left of the battery on screen, relative to the art's top-left, for a
+// strip pushed up `off` art pixels.
+#define SCENE_BATT_X (26 * SCENE_BATT_SCALE + 5)
+#define SCENE_BATT_Y(off) ((2 + (off)) * SCENE_BATT_SCALE + 1)
+
+// Draw the battery into a SCENE_BATT_W x SCENE_BATT_H RGB565 buffer: green
+// above 50%, orange from 20 to 50%, red below 20%, empty if unknown. While
+// charging, a white bolt over a fill that pulses with `tick`.
+void scene_battery_draw(uint16_t *buf, int stride, const scene_status_t *status, uint32_t tick);
 
 // Draw the stack into a SCENE_W x SCENE_H buffer, `stride` pixels per row.
 void scene_render(const scene_t *s, uint16_t *buf, int stride);

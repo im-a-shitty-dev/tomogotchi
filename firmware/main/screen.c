@@ -28,6 +28,13 @@ static uint32_t s_tick;            // and its tick
 // RGB565 canvas buffer: 52 * 64 * 2 bytes, about 6.6 KB.
 LV_DRAW_BUF_DEFINE_STATIC(s_canvas_buf, SCREEN_ART_W, SCREEN_ART_H, LV_COLOR_FORMAT_RGB565);
 
+// The peek strip's battery is its own small canvas on top, not scaled, so it
+// is drawn in native screen pixels: 18 * 31 * 2 bytes, about 1.1 KB.
+LV_DRAW_BUF_DEFINE_STATIC(s_batt_buf, SCENE_BATT_W, SCENE_BATT_H, LV_COLOR_FORMAT_RGB565);
+static lv_obj_t *s_batt;
+static volatile bool s_wifi, s_charging;  // from screen_set_status
+static volatile int s_battery_pct = -1;
+
 // --- Input ------------------------------------------------------------------
 // A tap waits briefly in case a second one makes it a double-tap (turn him
 // around). A long press opens the snack picker; while it is open, a tap on
@@ -236,6 +243,12 @@ esp_err_t screen_start(QueueHandle_t events)
     // Let taps on the canvas fall through to the screen handler.
     lv_obj_remove_flag(s_canvas, LV_OBJ_FLAG_CLICKABLE);
 
+    LV_DRAW_BUF_INIT_STATIC(s_batt_buf);
+    s_batt = lv_canvas_create(scr);  // created after, so drawn over the art
+    lv_canvas_set_draw_buf(s_batt, &s_batt_buf);
+    lv_obj_remove_flag(s_batt, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(s_batt, LV_OBJ_FLAG_HIDDEN);
+
     bsp_display_unlock();
     return ESP_OK;
 }
@@ -321,14 +334,21 @@ static scene_time_t clock_now(void)
     return (scene_time_t){.hour = tm.tm_hour, .minute = tm.tm_min, .second = tm.tm_sec};
 }
 
-// Mark art pixels `r` for redraw, in screen coordinates.
-static void invalidate_art(const scene_rect_t *r)
+// Where the art's top-left pixel lands on the screen.
+static void art_origin(int *ox, int *oy)
 {
     lv_area_t c;
     lv_obj_get_coords(s_canvas, &c);
     // The canvas is scaled about its centre.
-    int ox = (c.x1 + c.x2 + 1) / 2 - SCREEN_ART_W * SCREEN_ART_SCALE / 2;
-    int oy = (c.y1 + c.y2 + 1) / 2 - SCREEN_ART_H * SCREEN_ART_SCALE / 2;
+    *ox = (c.x1 + c.x2 + 1) / 2 - SCREEN_ART_W * SCREEN_ART_SCALE / 2;
+    *oy = (c.y1 + c.y2 + 1) / 2 - SCREEN_ART_H * SCREEN_ART_SCALE / 2;
+}
+
+// Mark art pixels `r` for redraw, in screen coordinates.
+static void invalidate_art(const scene_rect_t *r)
+{
+    int ox, oy;
+    art_origin(&ox, &oy);
     lv_area_t a = {
         .x1 = ox + r->x * SCREEN_ART_SCALE,
         .y1 = oy + r->y * SCREEN_ART_SCALE,
@@ -338,6 +358,46 @@ static void invalidate_art(const scene_rect_t *r)
     // Invalidate on the screen, not the canvas: the canvas object's own box is
     // the unscaled 52x64, which would clip the area.
     lv_obj_invalidate_area(lv_obj_get_screen(s_canvas), &a);
+}
+
+void screen_set_status(bool wifi, int battery_pct, bool charging)
+{
+    s_wifi = wifi;
+    s_battery_pct = battery_pct;
+    s_charging = charging;
+}
+
+// The battery over the peek strip, in native pixels, sliding with it. Only
+// redrawn when what it shows changes (level, charging pulse, position).
+static void draw_battery(const scene_t *scene, const scene_status_t *st, uint32_t tick)
+{
+    static bool shown;
+    static int8_t last_off;
+    static uint16_t last[SCENE_BATT_W * SCENE_BATT_H];
+    if (!scene->status_shown) {
+        if (shown) lv_obj_add_flag(s_batt, LV_OBJ_FLAG_HIDDEN);
+        shown = false;
+        return;
+    }
+    uint16_t *buf = (uint16_t *)s_batt_buf.data;
+    int stride = s_batt_buf.header.stride / sizeof(uint16_t);
+    scene_battery_draw(buf, stride, st, tick);
+    bool changed = !shown;
+    for (int y = 0; y < SCENE_BATT_H; y++) {
+        if (memcmp(&last[y * SCENE_BATT_W], &buf[y * stride], SCENE_BATT_W * sizeof(uint16_t)) != 0) {
+            memcpy(&last[y * SCENE_BATT_W], &buf[y * stride], SCENE_BATT_W * sizeof(uint16_t));
+            changed = true;
+        }
+    }
+    if (changed) lv_obj_invalidate(s_batt);
+    if (!shown || scene->status_off != last_off) {
+        int ox, oy;
+        art_origin(&ox, &oy);
+        lv_obj_set_pos(s_batt, ox + SCENE_BATT_X, oy + SCENE_BATT_Y(scene->status_off));
+        last_off = scene->status_off;
+    }
+    if (!shown) lv_obj_remove_flag(s_batt, LV_OBJ_FLAG_HIDDEN);
+    shown = true;
 }
 
 // The snack picker: gummy, crisps and coffee across the bottom third.
@@ -387,7 +447,8 @@ void screen_draw(const pet_t *pet, uint32_t tick)
     s_tick = tick;
     scene_t scene;
     scene_build(&scene, &v, tick);
-    scene_hud(&scene, &s_hud, &v, &now, tick);
+    scene_status_t status = {.wifi = s_wifi, .charging = s_charging, .battery_pct = s_battery_pct};
+    scene_hud(&scene, &s_hud, &v, &now, &status, tick);
     scene_render(&scene, buf, stride);
     if (v.menu_open) {
         draw_menu();
@@ -401,5 +462,6 @@ void screen_draw(const pet_t *pet, uint32_t tick)
         }
         s_prev_valid = true;
     }
+    draw_battery(&scene, &status, tick);
     bsp_display_unlock();
 }

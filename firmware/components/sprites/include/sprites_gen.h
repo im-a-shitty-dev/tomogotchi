@@ -137,6 +137,7 @@ typedef enum {
     SPRITE_HUD_EMOTE_BANG,
     SPRITE_HUD_EMOTE_DOTS,
     SPRITE_HUD_EMOTE_ZZZ,
+    SPRITE_HUD_WIFI,
     SPRITE_HUD_COUNT
 } sprite_hud_t;
 

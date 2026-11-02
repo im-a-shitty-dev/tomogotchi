@@ -65,6 +65,8 @@ static bool update_power(wake_t *wake, pet_t *pet, bool *on)
         wake_button(wake, now);
     }
 
+    screen_set_status(net_connected(), st.battery_pct, st.charging);
+
     static int last_pct = -2;
     if (st.battery_pct != last_pct) {
         ESP_LOGI(TAG, "battery %d%%%s", st.battery_pct, st.charging ? " (charging)" : "");
